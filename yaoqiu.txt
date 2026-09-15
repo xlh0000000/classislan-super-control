@@ -1,1 +1,0 @@
-主要工作区是D:\Code\ClassislandControl，classisland源码在D:\Code\ClassIsland示例插件在D:\Code\ExamplePlugins。我希望编写一个最强大的classisland集控插件，能管控classisland一切功能。并且制作网页端，网页端用nodejs加nuxt制作，前后端一体，希望有客户端分组功能。网页管理端风格，非衬线字体，大圆角，不使用渐变，尽量纯色块表达，不要给任何卡片使用阴影和描边，用色度景深区分布局关系，磨砂，盈透，跳转等非元素交互要有动效，简洁，借鉴明日方舟风格，需要整体风格统一！！

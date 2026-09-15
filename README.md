@@ -105,6 +105,10 @@ scripts/  备份与恢复
 - [设备插件说明](plugin/ClassIsland.Control.Plugin/README.md)
 - [协议向量](shared/protocol-vectors.json) · [JCS 向量](shared/jcs-vectors.json)
 
+## 📜 许可证
+
+以 [GPL-3.0](LICENSE) 授权：可自由使用、修改与分发，但分发修改版或衍生作品时须以同一许可证开源并保留版权声明，且不提供任何担保。
+
 ---
 
 <div align="center"><sub>GPL-3.0 · ClassIsland Control</sub></div>
