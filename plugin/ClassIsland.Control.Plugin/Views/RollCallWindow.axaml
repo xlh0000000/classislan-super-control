@@ -1,0 +1,81 @@
+<Window
+    x:Class="ClassIsland.Control.Plugin.Views.RollCallWindow"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="点名"
+    Width="260" Height="112"
+    Background="Transparent"
+    TransparencyLevelHint="AcrylicBlur,Blur,Transparent"
+    WindowDecorations="None"
+    CanResize="False"
+    ShowInTaskbar="False"
+    ShowActivated="False"
+    Topmost="True"
+    WindowStartupLocation="Manual">
+  <Window.Styles>
+    <Style Selector="Button.rollcall /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#2563EB"/>
+      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="CornerRadius" Value="14"/>
+    </Style>
+    <Style Selector="Button.rollcall:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#1D4ED8"/>
+      <Setter Property="Foreground" Value="White"/>
+    </Style>
+    <Style Selector="Button.rollcall:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#1E40AF"/>
+      <Setter Property="Foreground" Value="White"/>
+    </Style>
+    <Style Selector="Button.rollcall.secondary /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#1A2563EB"/>
+      <Setter Property="Foreground" Value="#1D4ED8"/>
+    </Style>
+    <Style Selector="Button.rollcall.secondary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#2E2563EB"/>
+      <Setter Property="Foreground" Value="#1D4ED8"/>
+    </Style>
+    <Style Selector="Button.rollcall.secondary:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#3D2563EB"/>
+      <Setter Property="Foreground" Value="#1D4ED8"/>
+    </Style>
+    <Style Selector="Button.rollcall">
+      <Setter Property="Background" Value="#2563EB"/>
+      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="CornerRadius" Value="14"/>
+      <Setter Property="FontSize" Value="18"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+      <Setter Property="VerticalAlignment" Value="Stretch"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Button.rollcall.secondary">
+      <Setter Property="Background" Value="#1A2563EB"/>
+      <Setter Property="Foreground" Value="#1D4ED8"/>
+    </Style>
+  </Window.Styles>
+
+  <Border x:Name="Shell" Margin="6" Padding="12" CornerRadius="18"
+          Background="#D9FFFFFF" BorderBrush="#40FFFFFF" BorderThickness="1"
+          BoxShadow="0 10 28 0 #26000000">
+    <Grid RowDefinitions="Auto,*" RowSpacing="9">
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+        <TextBlock x:Name="TitleText" Text="点名" FontSize="13" FontWeight="SemiBold"
+                   Foreground="#1F2937" VerticalAlignment="Center"/>
+        <TextBlock x:Name="RosterText" Grid.Column="1" Text="名单未下发" FontSize="11"
+                   Foreground="#9CA3AF" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+      </Grid>
+      <Grid Grid.Row="1" ColumnDefinitions="*,*" ColumnSpacing="9">
+        <Button x:Name="SingleButton" Classes="rollcall" Content="抽人" Click="SingleButton_OnClick"/>
+        <Button x:Name="MultiButton" Grid.Column="1" Classes="rollcall secondary" Click="MultiButton_OnClick">
+          <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <TextBlock Text="多人" VerticalAlignment="Center"/>
+            <TextBlock Text="▾" FontSize="11" Opacity="0.75" VerticalAlignment="Center"/>
+          </StackPanel>
+        </Button>
+      </Grid>
+    </Grid>
+  </Border>
+</Window>

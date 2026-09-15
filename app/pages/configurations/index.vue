@@ -1,0 +1,3 @@
+<template>
+  <ConfigurationLibrary />
+</template>

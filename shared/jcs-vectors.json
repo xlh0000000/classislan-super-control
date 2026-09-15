@@ -1,0 +1,116 @@
+{
+  "version": 1,
+  "description": "RFC 8785 canonical JSON golden vectors shared by the Node server and the .NET plugin.",
+  "vectors": [
+    {
+      "name": "empty-object",
+      "input": "{}",
+      "expected": "{}"
+    },
+    {
+      "name": "empty-array",
+      "input": "[]",
+      "expected": "[]"
+    },
+    {
+      "name": "null-leaf",
+      "input": "null",
+      "expected": "null"
+    },
+    {
+      "name": "scalars",
+      "input": "{\"t\":true,\"f\":false,\"n\":null}",
+      "expected": "{\"f\":false,\"n\":null,\"t\":true}"
+    },
+    {
+      "name": "key-order",
+      "input": "{\"b\":1,\"a\":2,\"C\":3,\"c\":4,\"B\":5}",
+      "expected": "{\"B\":5,\"C\":3,\"a\":2,\"b\":1,\"c\":4}"
+    },
+    {
+      "name": "nested-containers",
+      "input": "{\"z\":[{\"b\":1,\"a\":2},[],{}],\"a\":{\"y\":{\"b\":2,\"a\":1}}}",
+      "expected": "{\"a\":{\"y\":{\"a\":1,\"b\":2}},\"z\":[{\"a\":2,\"b\":1},[],{}]}"
+    },
+    {
+      "name": "utf16-key-order",
+      "input": "{\"~\":1,\"a\":3,\"\\u0000\":2,\"A\":4}",
+      "expected": "{\"\\u0000\":2,\"A\":4,\"a\":3,\"~\":1}"
+    },
+    {
+      "name": "cjk-keys",
+      "input": "{\"\\u4e2d\\u6587\":\"\\u503c\",\"\\u540d\\u524d\":\"\\u30c6\\u30b9\\u30c8\"}",
+      "expected": "{\"中文\":\"值\",\"名前\":\"テスト\"}"
+    },
+    {
+      "name": "emoji-key",
+      "input": "{\"\\ud83d\\ude00\":1,\"a\":2}",
+      "expected": "{\"a\":2,\"😀\":1}"
+    },
+    {
+      "name": "string-escapes",
+      "input": "{\"s\":\"\\\"\\\\\\b\\f\\n\\r\\t\"}",
+      "expected": "{\"s\":\"\\\"\\\\\\b\\f\\n\\r\\t\"}"
+    },
+    {
+      "name": "control-char",
+      "input": "{\"s\":\"a\\u0001b\"}",
+      "expected": "{\"s\":\"a\\u0001b\"}"
+    },
+    {
+      "name": "html-chars",
+      "input": "{\"s\":\"<script>&'\\\"\"}",
+      "expected": "{\"s\":\"<script>&'\\\"\"}"
+    },
+    {
+      "name": "forward-slash",
+      "input": "{\"s\":\"a/b\\/c\"}",
+      "expected": "{\"s\":\"a/b/c\"}"
+    },
+    {
+      "name": "numbers-integers",
+      "input": "{\"a\":0,\"b\":1,\"c\":-1,\"d\":100.0,\"e\":9007199254740992,\"f\":-42}",
+      "expected": "{\"a\":0,\"b\":1,\"c\":-1,\"d\":100,\"e\":9007199254740992,\"f\":-42}"
+    },
+    {
+      "name": "negative-zero",
+      "input": "{\"a\":0,\"b\":-0,\"c\":0.0,\"d\":-0.0}",
+      "expected": "{\"a\":0,\"b\":0,\"c\":0,\"d\":0}"
+    },
+    {
+      "name": "numbers-small",
+      "input": "{\"a\":0.1,\"b\":-12.34,\"c\":1.5,\"d\":0.5,\"e\":-0.5}",
+      "expected": "{\"a\":0.1,\"b\":-12.34,\"c\":1.5,\"d\":0.5,\"e\":-0.5}"
+    },
+    {
+      "name": "exponent-thresholds",
+      "input": "{\"a\":1e-5,\"b\":1e-6,\"c\":1e-7,\"d\":1e20,\"e\":1e21,\"f\":1.1e-7}",
+      "expected": "{\"a\":0.00001,\"b\":0.000001,\"c\":1e-7,\"d\":100000000000000000000,\"e\":1e+21,\"f\":1.1e-7}"
+    },
+    {
+      "name": "big-numbers",
+      "input": "{\"a\":123456789012345680,\"b\":123456789012345678901234567890,\"c\":1.7976931348623157e308,\"d\":5e-324}",
+      "expected": "{\"a\":123456789012345680,\"b\":1.2345678901234568e+29,\"c\":1.7976931348623157e+308,\"d\":5e-324}"
+    },
+    {
+      "name": "surrogate-pair-string",
+      "input": "{\"s\":\"\\ud83d\\ude00\"}",
+      "expected": "{\"s\":\"😀\"}"
+    },
+    {
+      "name": "deep-nesting",
+      "input": "[[[[[1]]]]]",
+      "expected": "[[[[[1]]]]]"
+    },
+    {
+      "name": "policy-document",
+      "input": "{\"profile\":{\"enabled\":true,\"components\":[{\"id\":\"c1\",\"enabled\":true}]},\"locks\":[\"/profile/enabled\"],\"theme\":{\"mode\":\"dark\",\"accent\":\"#4c8dff\"}}",
+      "expected": "{\"locks\":[\"/profile/enabled\"],\"profile\":{\"components\":[{\"enabled\":true,\"id\":\"c1\"}],\"enabled\":true},\"theme\":{\"accent\":\"#4c8dff\",\"mode\":\"dark\"}}"
+    },
+    {
+      "name": "mixed-payload",
+      "input": "{\"users\":[{\"id\":1,\"name\":\"\\u5f20\\u4e09\"},{\"id\":2,\"name\":\"\\ud83d\\ude00\"}],\"total\":2,\"ratio\":0.000001}",
+      "expected": "{\"ratio\":0.000001,\"total\":2,\"users\":[{\"id\":1,\"name\":\"张三\"},{\"id\":2,\"name\":\"😀\"}]}"
+    }
+  ]
+}

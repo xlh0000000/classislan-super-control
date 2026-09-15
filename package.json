@@ -1,0 +1,46 @@
+{
+  "name": "classisland-control",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.22.2"
+  },
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare",
+    "start": "node .output/server/index.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "jcs:verify": "dotnet run --project tools/JcsVectors/JcsVectors.csproj -c Release",
+    "protocol:vectors": "dotnet run --project tools/ProtocolVectors/ProtocolVectors.csproj -c Release",
+    "protocol:verify": "dotnet run --project tools/ProtocolVectors/ProtocolVectors.csproj -c Release -- --check",
+    "typecheck": "nuxt typecheck",
+    "sbom": "npm sbom --sbom-format cyclonedx > sbom.cdx.json",
+    "backup": "node scripts/backup.mjs",
+    "restore": "node scripts/restore.mjs"
+  },
+  "dependencies": {
+    "@node-rs/argon2": "2.0.2",
+    "@nuxtjs/i18n": "10.6.0",
+    "better-sqlite3": "13.0.3",
+    "jose": "6.2.12",
+    "nuxt": "4.5.2",
+    "ofetch": "1.5.1",
+    "vue": "3.5.42",
+    "vue-router": "5.3.1",
+    "zod": "4.6.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/better-sqlite3": "9.6.0",
+    "@types/node": "22.20.2",
+    "@vue/test-utils": "2.5.0",
+    "happy-dom": "20.14.3",
+    "typescript": "5.9.3",
+    "vitest": "5.0.0",
+    "vue-tsc": "3.3.11"
+  }
+}

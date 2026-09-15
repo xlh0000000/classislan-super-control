@@ -1,0 +1,25 @@
+{
+  "version": "protocol-v1",
+  "vectors": [
+    {
+      "name": "enrollment-request-null-thumbprint",
+      "schema": "enroll",
+      "json": "{\"token\":\"CLASSISLAND-ENROLL-TOKEN-0123456789abcdef\",\"name\":\"教室主机\",\"publicKeyJwk\":{\"kty\":\"EC\",\"crv\":\"P-256\",\"x\":\"f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU\",\"y\":\"x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0\"},\"pluginVersion\":\"0.1.0\",\"appVersion\":\"2.1.1.1\",\"platform\":\"Windows/x64\"}"
+    },
+    {
+      "name": "poll-request-empty",
+      "schema": "poll",
+      "json": "{\"deviceId\":\"2e64dbad-e2f3-49f3-9629-1bb4681fffb6\",\"sequence\":1,\"timestampUtc\":\"2026-09-11T00:00:00.000Z\",\"pluginVersion\":\"0.1.0\",\"appVersion\":\"2.1.1.1\",\"platform\":\"Windows/x64\",\"capabilityDigest\":\"3f2a1c9d\",\"capabilities\":[{\"id\":\"app.lifecycle.v1\",\"mode\":\"apply\",\"schemaVersion\":1}],\"policyRevision\":0,\"policyEpoch\":0,\"policyHash\":\"\",\"driftCount\":0,\"acknowledgements\":[],\"rollCallRevision\":0}"
+    },
+    {
+      "name": "poll-request-null-capabilities-and-acks",
+      "schema": "poll",
+      "json": "{\"deviceId\":\"2e64dbad-e2f3-49f3-9629-1bb4681fffb6\",\"sequence\":2,\"timestampUtc\":\"2026-09-11T00:00:05.000Z\",\"pluginVersion\":\"0.1.0\",\"appVersion\":\"2.1.1.1\",\"platform\":\"Windows/x64\",\"capabilityDigest\":\"3f2a1c9d\",\"policyRevision\":3,\"policyEpoch\":7,\"policyHash\":\"abc123\",\"driftCount\":0,\"acknowledgements\":[],\"rollCallRevision\":0}"
+    },
+    {
+      "name": "poll-request-with-ack-results",
+      "schema": "poll",
+      "json": "{\"deviceId\":\"2e64dbad-e2f3-49f3-9629-1bb4681fffb6\",\"sequence\":3,\"timestampUtc\":\"2026-09-11T00:00:10.000Z\",\"pluginVersion\":\"0.1.0\",\"appVersion\":\"2.1.1.1\",\"platform\":\"Windows/x64\",\"capabilityDigest\":\"3f2a1c9d\",\"capabilities\":[{\"id\":\"app.lifecycle.v1\",\"mode\":\"apply\",\"schemaVersion\":1}],\"policyRevision\":3,\"policyEpoch\":7,\"policyHash\":\"abc123\",\"driftCount\":0,\"acknowledgements\":[{\"commandId\":\"9b6a1f3c-2f8e-4c1e-8f7a-6d5b4c3a2e10\",\"state\":\"succeeded\"},{\"commandId\":\"1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f\",\"state\":\"failed\",\"result\":{\"error\":\"policy-conflict\",\"attempt\":2}}],\"appliedSections\":{\"theme\":\"applied\",\"weather\":\"failed\"},\"rollCallRevision\":0}"
+    }
+  ]
+}

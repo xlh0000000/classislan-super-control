@@ -1,0 +1,106 @@
+<ci:SettingsPageBase
+    x:Class="ClassIsland.Control.Plugin.Views.ControlSettingsPage"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:ci="http://classisland.tech/schemas/xaml/core"
+    xmlns:controls="clr-namespace:FluentAvalonia.UI.Controls;assembly=FluentAvalonia"
+    mc:Ignorable="d"
+    d:DesignWidth="800" d:DesignHeight="600">
+  <ScrollViewer>
+    <StackPanel Classes="settings-container animated-intro">
+
+      <controls:FAInfoBar x:Name="ErrorBar" Severity="Error" IsClosable="False" IsOpen="False"/>
+
+      <controls:FAInfoBar x:Name="ManagedNotice" Severity="Informational" IsClosable="False" IsOpen="False"
+                          Title="已由集控端接管"
+                          Message="除集控端主动解除外，本机无法退出集控，也无法更改服务器地址或设备身份。"/>
+
+      <StackPanel Classes="cardContainer">
+        <controls:FASettingsExpanderItem Content="接入状态">
+          <controls:FASettingsExpanderItem.Footer>
+            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+              <Ellipse x:Name="StatusDot" Width="10" Height="10" VerticalAlignment="Center" Fill="#737C74"/>
+              <TextBlock x:Name="StatusText" TextWrapping="Wrap" TextAlignment="Right" MaxWidth="380"
+                         VerticalAlignment="Center" Text="未加入集控"/>
+            </StackPanel>
+          </controls:FASettingsExpanderItem.Footer>
+        </controls:FASettingsExpanderItem>
+      </StackPanel>
+
+      <StackPanel Classes="cardContainer" x:Name="DetailPanel" IsVisible="False">
+        <controls:FASettingsExpanderItem>
+          <Grid ColumnDefinitions="96,*" ColumnSpacing="12">
+            <TextBlock Text="设备 ID" Opacity="0.6"/>
+            <TextBlock Grid.Column="1" x:Name="DeviceIdText" TextWrapping="Wrap"/>
+          </Grid>
+        </controls:FASettingsExpanderItem>
+        <controls:FASettingsExpanderItem>
+          <Grid ColumnDefinitions="96,*" ColumnSpacing="12">
+            <TextBlock Text="服务器" Opacity="0.6"/>
+            <TextBlock Grid.Column="1" x:Name="ServerText" TextWrapping="Wrap"/>
+          </Grid>
+        </controls:FASettingsExpanderItem>
+        <controls:FASettingsExpanderItem>
+          <Grid ColumnDefinitions="96,*" ColumnSpacing="12">
+            <TextBlock Text="连接方式" Opacity="0.6"/>
+            <TextBlock Grid.Column="1" x:Name="TransportText" TextWrapping="Wrap"/>
+          </Grid>
+        </controls:FASettingsExpanderItem>
+        <controls:FASettingsExpanderItem>
+          <Grid ColumnDefinitions="96,*" ColumnSpacing="12">
+            <TextBlock Text="时间偏移" Opacity="0.6"/>
+            <TextBlock Grid.Column="1" x:Name="TimeOffsetText" TextWrapping="Wrap"/>
+          </Grid>
+        </controls:FASettingsExpanderItem>
+        <controls:FASettingsExpanderItem>
+          <Grid ColumnDefinitions="96,*" ColumnSpacing="12">
+            <TextBlock Text="最近同步" Opacity="0.6"/>
+            <TextBlock Grid.Column="1" x:Name="LastSyncText" TextWrapping="Wrap"/>
+          </Grid>
+        </controls:FASettingsExpanderItem>
+        <controls:FASettingsExpanderItem>
+          <Grid ColumnDefinitions="96,*" ColumnSpacing="12">
+            <TextBlock Text="已应用策略" Opacity="0.6"/>
+            <TextBlock Grid.Column="1" x:Name="PolicyText" TextWrapping="Wrap"/>
+          </Grid>
+        </controls:FASettingsExpanderItem>
+      </StackPanel>
+
+      <StackPanel Classes="cardContainer" x:Name="LockPanel" IsVisible="False">
+        <controls:FASettingsExpanderItem>
+          <Grid ColumnDefinitions="96,*" ColumnSpacing="12">
+            <TextBlock Text="集控端锁定" Opacity="0.6"/>
+            <TextBlock Grid.Column="1" x:Name="LockText" TextWrapping="Wrap"/>
+          </Grid>
+        </controls:FASettingsExpanderItem>
+      </StackPanel>
+
+      <StackPanel Classes="cardContainer" x:Name="ConnectPanel">
+        <controls:FASettingsExpanderItem Content="服务器地址" Description="集控服务端地址；公网地址必须使用 HTTPS。">
+          <controls:FASettingsExpanderItem.Footer>
+            <TextBox x:Name="ServerUrlBox" MinWidth="240" MaxWidth="320"
+                     PlaceholderText="https://control.example.edu"/>
+          </controls:FASettingsExpanderItem.Footer>
+        </controls:FASettingsExpanderItem>
+        <controls:FASettingsExpanderItem Content="设备名称" Description="在集控端设备列表中显示的名称。">
+          <controls:FASettingsExpanderItem.Footer>
+            <TextBox x:Name="DeviceNameBox" MinWidth="240" MaxWidth="320"/>
+          </controls:FASettingsExpanderItem.Footer>
+        </controls:FASettingsExpanderItem>
+        <controls:FASettingsExpanderItem Content="一次性接入码" Description="首次注册时填写；注册成功后由集控端管理。">
+          <controls:FASettingsExpanderItem.Footer>
+            <TextBox x:Name="EnrollmentTokenBox" PasswordChar="●" MinWidth="240" MaxWidth="320"
+                     PlaceholderText="首次注册填写"/>
+          </controls:FASettingsExpanderItem.Footer>
+        </controls:FASettingsExpanderItem>
+        <controls:FASettingsExpanderItem Content="接入集控">
+          <controls:FASettingsExpanderItem.Footer>
+            <Button x:Name="SaveButton" Classes="accent" Content="保存并连接" Click="SaveButton_OnClick"/>
+          </controls:FASettingsExpanderItem.Footer>
+        </controls:FASettingsExpanderItem>
+      </StackPanel>
+    </StackPanel>
+  </ScrollViewer>
+</ci:SettingsPageBase>

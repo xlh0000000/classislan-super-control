@@ -1,0 +1,27 @@
+{
+  "product": {
+    "name": "ClassIsland Control",
+    "subtitle": "ClassIsland 集中管理"
+  },
+  "nav": {
+    "overview": "概览",
+    "devices": "设备",
+    "organization": "组织",
+    "policies": "策略",
+    "configurations": "配置库",
+    "tasks": "任务",
+    "enrollment": "接入",
+    "audit": "审计",
+    "system": "系统"
+  },
+  "status": {
+    "ready": "控制平面可用",
+    "online": "在线",
+    "offline": "离线"
+  },
+  "actions": {
+    "enroll": "接入设备",
+    "lightTheme": "浅色",
+    "darkTheme": "深色"
+  }
+}

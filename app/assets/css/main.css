@@ -1,0 +1,146 @@
+:root {
+  color-scheme: light;
+  /* 白为主、蓝为辅：页面底色浅蓝灰、卡片纯白，强调色只用一种蓝。 */
+  --canvas: #eaeef6;
+  --surface-1: #ffffff;
+  --surface-2: #f2f5fa;
+  --surface-3: #e2e9f4;
+  --surface-glass: rgb(255 255 255 / 82%);
+  --ink: #101a2b;
+  --ink-soft: #46536b;
+  --ink-muted: #5f6d86;
+  --accent: #2563eb;
+  --accent-strong: #1d4ed8;
+  --accent-ink: #ffffff;
+  --good: #15803d;
+  --warning: #b45309;
+  --serious: #c0392b;
+  /* 破坏性操作（删除 / 停用 / 解除）统一语义色，避免各页各写一份红色。 */
+  --bad: var(--serious);
+  --critical: #9b1c2e;
+  /* 控件尺寸刻度：主要操作与表单控件 44px，行内/分段/标签页等紧凑控件 36px。 */
+  --control-h: 44px;
+  --control-h-sm: 36px;
+  /* 控件圆角：按钮与输入框统一 14px，行内紧凑控件 11px。 */
+  --radius-control: 14px;
+  --radius-control-sm: 12px;
+  /* 列表行与内嵌块圆角。 */
+  --radius-row: 14px;
+  --radius-sm: 14px;
+  --radius-md: 22px;
+  --radius-lg: 30px;
+  --ease-enter: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  font-family: Inter, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  font-synthesis: none;
+  color: var(--ink);
+  background: var(--canvas);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --canvas: #0f1421;
+  --surface-1: #161c29;
+  --surface-2: #1e2536;
+  --surface-3: #283143;
+  --surface-glass: rgb(22 28 41 / 84%);
+  --ink: #e9eef9;
+  --ink-soft: #b4bfd0;
+  --ink-muted: #8a97ab;
+  --accent: #7aa2ff;
+  --accent-strong: #a9c3ff;
+  --accent-ink: #0b0f18;
+  --good: #6ecf9b;
+  --warning: #e2b25c;
+  --serious: #f08a7a;
+  --critical: #f0758f;
+}
+
+* { box-sizing: border-box; }
+html, body, #__nuxt { min-height: 100%; }
+body { margin: 0; background: var(--canvas); }
+button, input, select, textarea { font: inherit; }
+button { color: inherit; }
+a { color: inherit; }
+::selection { background: var(--accent); color: var(--accent-ink); }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+/*
+ * 共享控件原语：跨页面复用的外观集中在这里，各页只保留自己的排版差异，
+ * 避免同一控件在不同页面出现不同高度、圆角或颜色。
+ */
+input[type="checkbox"],
+input[type="radio"] {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  flex: none;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/*
+ * 控件排版基线：按钮与文本输入的字号、圆角在此统一，避免同一控件在表格
+ * （12px）、弹窗（16px）等不同上下文里继承出不同大小。
+ */
+button {
+  font-size: 13px;
+  border-radius: var(--radius-control);
+  font-family: inherit;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+select,
+textarea {
+  font-size: 13px;
+}
+
+.muted { color: var(--ink-muted); font-size: 12px; }
+
+/* 次要按钮：取消、关闭、行内操作。所在一层已是 surface-2 时按需覆盖背景。 */
+.ghost {
+  min-height: var(--control-h-sm);
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-control-sm);
+  background: var(--surface-2);
+  color: var(--ink-soft);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 160ms var(--ease-enter), color 160ms var(--ease-enter);
+}
+.ghost:hover { color: var(--ink); }
+.ghost:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--ink-muted); }
+.dot[data-online="true"] { background: var(--good); }
+
+/* 分段选择：视图切换、连接方式、设置覆盖等一次性选择。 */
+.seg { display: inline-flex; flex: none; gap: 4px; padding: 4px; border-radius: 12px; background: var(--surface-1); }
+.seg button { min-height: var(--control-h-sm); padding: 0 13px; border: 0; border-radius: 9px; background: transparent; color: var(--ink-soft); font-size: 11px; cursor: pointer; }
+.seg button:hover { color: var(--ink); }
+.seg button[data-active="true"] { background: var(--ink); color: var(--canvas); font-weight: 600; }
+
+/* 标签页：页面内分区切换。 */
+.tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.tabs button { min-height: var(--control-h-sm); padding: 0 16px; border: 0; border-radius: 12px; background: var(--surface-1); color: var(--ink-soft); font-size: 12px; cursor: pointer; transition: background 160ms var(--ease-enter), color 160ms var(--ease-enter); }
+.tabs button:hover { background: var(--surface-2); color: var(--ink); }
+.tabs button.active,
+.tabs button[data-active="true"] { background: var(--ink); color: var(--canvas); }
+
+/* 只读 chip 列表：锁定路径、任务目标等。 */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chips span { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 12px; background: var(--surface-2); color: var(--ink-soft); font-size: 11px; }
+
+.page-enter-active,
+.page-leave-active { transition: opacity 200ms var(--ease-enter), transform 300ms var(--ease-enter); }
+.page-enter-from { opacity: 0; transform: translateY(10px); }
+.page-leave-to { opacity: 0; transform: translateY(6px); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

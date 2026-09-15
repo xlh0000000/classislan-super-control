@@ -1,0 +1,24 @@
+<Window
+    x:Class="ClassIsland.Control.Plugin.Views.RollCallResultWindow"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="点名结果"
+    SizeToContent="WidthAndHeight"
+    Background="Transparent"
+    TransparencyLevelHint="AcrylicBlur,Blur,Transparent"
+    WindowDecorations="None"
+    CanResize="False"
+    ShowInTaskbar="False"
+    ShowActivated="False"
+    Topmost="True"
+    WindowStartupLocation="CenterScreen">
+  <Border x:Name="Card" Margin="26" Padding="54,32" CornerRadius="26" Opacity="0"
+          Background="#F2FFFFFF" BorderBrush="#3D2563EB" BorderThickness="1"
+          BoxShadow="0 20 56 0 #40000000">
+    <StackPanel Spacing="12" HorizontalAlignment="Center">
+      <TextBlock x:Name="KickerText" Text="点名" HorizontalAlignment="Center"
+                 FontSize="12" Foreground="#6B7280" LetterSpacing="3"/>
+      <WrapPanel x:Name="NameList" Orientation="Horizontal" HorizontalAlignment="Center"/>
+    </StackPanel>
+  </Border>
+</Window>
