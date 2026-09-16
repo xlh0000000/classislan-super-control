@@ -6,19 +6,20 @@
     SizeToContent="WidthAndHeight"
     Background="Transparent"
     TransparencyLevelHint="AcrylicBlur,Blur,Transparent"
-    SystemDecorations="None"
+    WindowDecorations="None"
     CanResize="False"
     ShowInTaskbar="False"
     ShowActivated="False"
     Topmost="True"
     WindowStartupLocation="CenterScreen">
-  <Border x:Name="Card" Margin="26" Padding="54,32" CornerRadius="26" Opacity="0"
-          Background="#F2FFFFFF" BorderBrush="#3D2563EB" BorderThickness="1"
-          BoxShadow="0 20 56 0 #40000000">
-    <StackPanel Spacing="12" HorizontalAlignment="Center">
-      <TextBlock x:Name="KickerText" Text="点名" HorizontalAlignment="Center"
-                 FontSize="12" Foreground="#6B7280" LetterSpacing="3"/>
-      <WrapPanel x:Name="NameList" Orientation="Horizontal" HorizontalAlignment="Center"/>
-    </StackPanel>
-  </Border>
+  <!-- 与抽人悬浮窗同一套毛玻璃：系统亚克力 + 只显示姓名，不放标题等其他文字。 -->
+  <ExperimentalAcrylicBorder x:Name="Card" Margin="26" CornerRadius="26" Opacity="0">
+    <ExperimentalAcrylicBorder.Material>
+      <ExperimentalAcrylicMaterial BackgroundSource="Digger"
+                                   TintColor="White" TintOpacity="0.5" MaterialOpacity="0.7"
+                                   FallbackColor="#F2FFFFFF"/>
+    </ExperimentalAcrylicBorder.Material>
+    <WrapPanel x:Name="NameList" Orientation="Horizontal" HorizontalAlignment="Center"
+               Margin="54,32"/>
+  </ExperimentalAcrylicBorder>
 </Window>

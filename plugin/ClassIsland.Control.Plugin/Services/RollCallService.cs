@@ -54,7 +54,6 @@ public sealed class RollCallService : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await _appStarted.Task.WaitAsync(stoppingToken);
-        _roster.Changed += OnRosterChanged;
         if (_store.Settings.RollCallEnabled) Show();
         // 悬浮窗常驻运行，等到宿主停止即可；这里只负责维持事件订阅。
         try { await Task.Delay(Timeout.Infinite, stoppingToken); }
@@ -63,7 +62,6 @@ public sealed class RollCallService : BackgroundService
 
     public override Task StopAsync(CancellationToken cancellationToken)
     {
-        _roster.Changed -= OnRosterChanged;
         if (_app is not null) _app.AppStarted -= OnAppStarted;
         Dispatcher.UIThread.Post(() =>
         {
@@ -81,8 +79,8 @@ public sealed class RollCallService : BackgroundService
     public void Hide() => Dispatcher.UIThread.Post(HideCore);
 
     /// <summary>设置页改动尺寸/不透明度后立即生效。</summary>
-    public void ReapplySettings() => Dispatcher.UIThread.Post(() => _window?.ApplySettings(
-        _store.Settings, _roster.Names.Count, _roster.Snapshot.Revision));
+    public void ReapplySettings() =>
+        Dispatcher.UIThread.Post(() => _window?.ApplySettings(_store.Settings));
 
     /// <summary>把悬浮窗挪回工作区右下角的默认位置。</summary>
     public void ResetPosition() => Dispatcher.UIThread.Post(() => _window?.PlaceAt(null, null));
@@ -106,7 +104,7 @@ public sealed class RollCallService : BackgroundService
             _window = null;
             StateChanged?.Invoke();
         };
-        window.ApplySettings(_store.Settings, _roster.Names.Count, _roster.Snapshot.Revision);
+        window.ApplySettings(_store.Settings);
         window.PlaceAt(_store.Settings.RollCallX, _store.Settings.RollCallY);
         _window = window;
         window.Show();
@@ -180,9 +178,6 @@ public sealed class RollCallService : BackgroundService
             _logger.LogWarning(exception, "Failed to raise the roll-call notification.");
         }
     }
-
-    private void OnRosterChanged() => Dispatcher.UIThread.Post(() =>
-        _window?.RenderRoster(_roster.Names.Count, _roster.Snapshot.Revision));
 
     private void OnWindowMoved(double x, double y) => _ = SavePositionAsync(x, y);
 

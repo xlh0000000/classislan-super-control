@@ -2,7 +2,6 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
-using Avalonia.Media;
 using Avalonia.VisualTree;
 using ClassIsland.Control.Plugin.Services;
 
@@ -42,28 +41,18 @@ public partial class RollCallWindow : Window
         ? value
         : 1;
 
-    /// <summary>把设置页的尺寸、不透明度与名单状态应用到窗口。</summary>
-    public void ApplySettings(PluginSettings settings, int rosterCount, long rosterRevision)
+    /// <summary>把设置页的尺寸与底色不透明度应用到窗口。</summary>
+    public void ApplySettings(PluginSettings settings)
     {
         Width = Math.Clamp(settings.RollCallWidth, 180, 900);
         Height = Math.Clamp(settings.RollCallHeight, 84, 460);
+        // 磨砂浓度由亚克力材质决定：MaterialOpacity 是磨砂层自身，TintOpacity 是白色调。
         var opacity = Math.Clamp(settings.RollCallOpacity, 0.2, 1);
-        Shell.Background = new SolidColorBrush(Colors.White, opacity);
-        Shell.BorderBrush = new SolidColorBrush(Colors.White, Math.Min(1, opacity + 0.12));
-        RenderRoster(rosterCount, rosterRevision);
-        TitleText.FontSize = Height >= 132 ? 15 : 13;
-    }
-
-    public void RenderRoster(int rosterCount, long rosterRevision)
-    {
-        if (rosterCount > 0)
+        if (Shell.Material is { } material)
         {
-            RosterText.Text = $"名单 {rosterCount} 人";
-            RosterText.Foreground = new SolidColorBrush(Color.Parse("#6B7280"));
-            return;
+            material.MaterialOpacity = opacity;
+            material.TintOpacity = Math.Clamp(opacity * 0.6, 0.15, 0.9);
         }
-        RosterText.Text = rosterRevision > 0 ? "名单为空" : "名单未下发";
-        RosterText.Foreground = new SolidColorBrush(Color.Parse("#9CA3AF"));
     }
 
     /// <summary>

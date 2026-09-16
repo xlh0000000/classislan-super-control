@@ -25,7 +25,6 @@ public partial class RollCallResultWindow : Window
 
     public void ShowResult(IReadOnlyList<string> names, int seconds)
     {
-        KickerText.Text = names.Count > 1 ? $"点名 · {names.Count} 人" : "点名";
         var fontSize = names.Count switch
         {
             1 => 58d,
