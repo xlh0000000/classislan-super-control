@@ -1,8 +1,10 @@
 import { advanceTaskState } from "./tasks";
 import { writeAuditCheckpoint } from "./audit-checkpoint";
+import { pruneCrashReports } from "./crash-reports";
 
 let timer: ReturnType<typeof setInterval> | null = null;
 let checkpointTimer: ReturnType<typeof setInterval> | null = null;
+let pruneTimer: ReturnType<typeof setInterval> | null = null;
 let started = false;
 
 export function startTaskScheduler() {
@@ -27,10 +29,19 @@ export function startTaskScheduler() {
     } catch (error) { console.error("[scheduler] audit checkpoint failed", error); }
   }, 60_000);
   checkpointTimer.unref();
+  // 每 10 分钟清理一次过期崩溃记录，避免长期运行把库撑大。
+  pruneTimer = setInterval(() => {
+    try {
+      const db = useDatabase();
+      db.transaction(() => pruneCrashReports(db)).immediate();
+    } catch (error) { console.error("[scheduler] crash prune failed", error); }
+  }, 600_000);
+  pruneTimer.unref();
 }
 
 export function stopTaskScheduler() {
   if (timer) { clearInterval(timer); timer = null; }
   if (checkpointTimer) { clearInterval(checkpointTimer); checkpointTimer = null; }
+  if (pruneTimer) { clearInterval(pruneTimer); pruneTimer = null; }
   started = false;
 }

@@ -17,6 +17,7 @@ public sealed class AgentStatus
     private IReadOnlyList<string> _lockSummary = [];
     private string _timeOffsetSummary = "";
     private string _timetableSummary = "";
+    private string _crashSummary = "";
     private bool _syncing;
     private bool _locked;
 
@@ -40,6 +41,8 @@ public sealed class AgentStatus
     public string TimeOffsetSummary { get { lock (_gate) return _timeOffsetSummary; } }
     /// <summary>课表上传状态说明；空串表示课表上传未开启或宿主不可用。</summary>
     public string TimetableSummary { get { lock (_gate) return _timetableSummary; } }
+    /// <summary>崩溃上报概览；空串表示尚未统计。</summary>
+    public string CrashSummary { get { lock (_gate) return _crashSummary; } }
     public long PolicyEpoch { get { lock (_gate) return _policyEpoch; } }
     public IReadOnlyDictionary<string, string> AppliedSections { get { lock (_gate) return new Dictionary<string, string>(_appliedSections); } }
 
@@ -70,6 +73,7 @@ public sealed class AgentStatus
             _lockSummary = [];
             _timeOffsetSummary = "";
             _timetableSummary = "";
+            _crashSummary = "";
             _policyError = "";
             _lastError = "";
             _note = "集控端已解除接入，可重新配置";
@@ -107,6 +111,13 @@ public sealed class AgentStatus
     public void TimetableUpdated(string summary)
     {
         lock (_gate) _timetableSummary = summary;
+        Changed?.Invoke();
+    }
+
+    /// <summary>记录崩溃上报概览。</summary>
+    public void CrashUpdated(string summary)
+    {
+        lock (_gate) _crashSummary = summary;
         Changed?.Invoke();
     }
 

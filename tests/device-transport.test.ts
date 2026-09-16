@@ -42,7 +42,7 @@ function pollInput(sequence = 1): DevicePollInput {
   return {
     deviceId: DEVICE_ID, sequence, timestampUtc: NOW, pluginVersion: "0.1.0", appVersion: "2.1.1.1",
     platform: "Windows/x64", capabilityDigest: "cap-1", policyRevision: 0, policyEpoch: 0, policyHash: "",
-    driftCount: 0, acknowledgements: [],
+    driftCount: 0, acknowledgements: [], crashes: [],
   };
 }
 
@@ -81,7 +81,7 @@ describe("WebSocket 与 HTTP 共用同一签名信封", () => {
     const envelope = signedEnvelope(privateKeyPem, {
       deviceId: DEVICE_ID, sequence: 1, timestampUtc: NOW, pluginVersion: "0.1.0", appVersion: "2.1.1.1",
       platform: "Windows/x64", capabilityDigest: "cap-1", policyRevision: 0, policyEpoch: 0, policyHash: "",
-      driftCount: 0, acknowledgements: [],
+      driftCount: 0, acknowledgements: [], crashes: [],
     });
     const authenticated = verifyDeviceRequestEnvelope(db, {
       deviceId: DEVICE_ID, sequence: 1, timestampUtc: NOW,
@@ -98,7 +98,7 @@ describe("WebSocket 与 HTTP 共用同一签名信封", () => {
     const envelope = JSON.parse(signedEnvelope(privateKeyPem, {
       deviceId: DEVICE_ID, sequence: 1, timestampUtc: NOW, pluginVersion: "0.1.0", appVersion: "2.1.1.1",
       platform: "Windows/x64", capabilityDigest: "cap-1", policyRevision: 0, policyEpoch: 0, policyHash: "",
-      driftCount: 0, acknowledgements: [],
+      driftCount: 0, acknowledgements: [], crashes: [],
     })) as Record<string, unknown>;
     envelope.policyRevision = 99;
     let statusCode: number | undefined;

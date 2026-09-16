@@ -27,8 +27,12 @@ public sealed class Plugin : PluginBase
         if (!string.IsNullOrEmpty(configRoot)) mirrors.Add(Path.Combine(configRoot, ".control-seals"));
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         if (!string.IsNullOrEmpty(localAppData)) mirrors.Add(Path.Combine(localAppData, "ClassIslandControl"));
-        services.AddSingleton(new PluginPaths(PluginConfigFolder, settingsPath, statePath, sealPath,
-            snapshotPath, mirrors));
+        var paths = new PluginPaths(PluginConfigFolder, settingsPath, statePath, sealPath, snapshotPath, mirrors);
+        services.AddSingleton(paths);
+        // 崩溃上报：异常钩子必须尽早安装，因此在注册阶段就构造单例并挂载。
+        var crashReporter = new CrashReporter(paths);
+        crashReporter.Install();
+        services.AddSingleton(crashReporter);
         services.AddSingleton<EnrollmentGuard>();
         services.AddSingleton<PolicySnapshotStore>();
         services.AddSingleton<PluginSettingsStore>();

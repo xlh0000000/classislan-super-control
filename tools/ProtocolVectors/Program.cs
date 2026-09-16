@@ -102,6 +102,23 @@ Add("poll-request-timetable-digest-only", "poll",
         "3f2a1c9d", null, 3, 7, "abc123", 0, Array.Empty<CommandResult>(), null,
         0, "5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f"));
 
+// 崩溃上报：随轮询携带本机未处理异常；Id 由客户端生成，服务端据此幂等去重。
+Add("poll-request-with-crash-reports", "poll",
+    new PollRequest(deviceId, 6, "2026-09-11T00:00:25.000Z", "0.1.0", "2.1.1.1", "Windows/x64",
+        "3f2a1c9d", null, 3, 7, "abc123", 0, Array.Empty<CommandResult>(), null,
+        0, null, null,
+        new List<RemoteCrashReport>
+        {
+            new("4c1a9f0b7d2e4a5c8f3b1d6e9a0c2f47", "2026-09-11T00:00:21.000Z", "unhandled-exception",
+                "System.NullReferenceException", "Object reference not set to an instance of an object.",
+                "   at ClassIsland.Controls.MainWindow.OnLoaded(Object sender, RoutedEventArgs e)\n   at Avalonia.Interactivity.RoutedEvent.InvokeHandler(Object sender, RoutedEventArgs e)",
+                "UI Thread", "2.1.1.1", "0.1.0", "Windows/x64"),
+            new("8d5b2c4e6f7a9b0c1d2e3f4051627384", "2026-09-11T00:00:22.000Z", "unobserved-task",
+                "System.Threading.Tasks.TaskCanceledException", "A task was canceled.",
+                "   at System.Net.Http.HttpClient.SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)",
+                "", "2.1.1.1", "0.1.0", "Windows/x64"),
+        }));
+
 var json = JsonSerializer.Serialize(new ContractFile("protocol-v1", vectors),
     new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping }) + "\n";
 

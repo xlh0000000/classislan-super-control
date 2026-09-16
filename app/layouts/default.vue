@@ -29,6 +29,7 @@ const navGroups: [string, [string, string, string][]][] = [
     ["/enrollment", "接入", "ENROLLMENT"],
   ]],
   ["系统", [
+    ["/crashes", "崩溃", "CRASHES"],
     ["/audit", "审计", "AUDIT"],
     ["/users", "用户", "ACCESS"],
     ["/settings", "系统", "SYSTEM"],

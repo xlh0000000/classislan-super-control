@@ -30,7 +30,7 @@ public sealed record CommandResult(string CommandId, string State, [property: Js
 
 public sealed record EnrollmentRequest(string Token, string Name, Dictionary<string, object> PublicKeyJwk, string? KeyThumbprint, string PluginVersion, string AppVersion, string Platform);
 public sealed record EnrollmentResponse(string DeviceId, int PollIntervalSeconds, DateTime ServerTimeUtc, string ServerSigningPublicKey, string ServerSigningKeyId);
-public sealed record PollRequest(string DeviceId, long Sequence, string TimestampUtc, string PluginVersion, string AppVersion, string Platform, string CapabilityDigest, IReadOnlyList<CapabilityDescriptor>? Capabilities, long PolicyRevision, long PolicyEpoch, string PolicyHash, int DriftCount, IReadOnlyList<CommandResult> Acknowledgements, IReadOnlyDictionary<string, string>? AppliedSections, long RollCallRevision = 0, string? TimetableDigest = null, JsonElement? Timetable = null);
+public sealed record PollRequest(string DeviceId, long Sequence, string TimestampUtc, string PluginVersion, string AppVersion, string Platform, string CapabilityDigest, IReadOnlyList<CapabilityDescriptor>? Capabilities, long PolicyRevision, long PolicyEpoch, string PolicyHash, int DriftCount, IReadOnlyList<CommandResult> Acknowledgements, IReadOnlyDictionary<string, string>? AppliedSections, long RollCallRevision = 0, string? TimetableDigest = null, JsonElement? Timetable = null, IReadOnlyList<RemoteCrashReport>? Crashes = null);
 public sealed record PollResponse(DateTime ServerTimeUtc, int NextPollSeconds, string? Transport, RemotePolicy? Policy, List<RemoteCommandEnvelope> Commands, List<AckReceipt>? Acknowledgements = null, RemoteRollCall? RollCall = null, bool TimetableRequired = false);
 /// <summary>WebSocket 传输的消息封装；信封与响应正文与 HTTP 轮询逐字节同源。</summary>
 public sealed record WebSocketPollMessage(string Type, JsonElement Envelope);
@@ -41,4 +41,11 @@ public sealed record AckReceipt(string CommandId, string Status, string? Reason 
 public sealed record RemotePolicy(long Revision, long Epoch, JsonElement Document, Dictionary<string, JsonElement>? Locks, string DocumentHash);
 /// <summary>云端下发的点名名单；仅在设备手上的修订过期时出现。</summary>
 public sealed record RemoteRollCall(long Revision, IReadOnlyList<string> Names);
+/// <summary>
+/// 设备端崩溃报告：由插件在本机捕获未处理异常后生成，随轮询上报。
+/// Id 由客户端生成，服务端以它为主键去重，因此重传天然幂等。
+/// 指纹与归组由服务端统一计算，避免不同插件版本各算一套。
+/// </summary>
+public sealed record RemoteCrashReport(string Id, string OccurredAtUtc, string Kind, string ExceptionType,
+    string Message, string StackTrace, string ThreadName, string AppVersion, string PluginVersion, string Platform);
 public sealed record RemoteCommandEnvelope(string CommandId, string CapabilityId, int SchemaVersion, JsonElement Payload, DateTime NotBeforeUtc, DateTime ExpiresAtUtc, int MaxAttempts = 1);

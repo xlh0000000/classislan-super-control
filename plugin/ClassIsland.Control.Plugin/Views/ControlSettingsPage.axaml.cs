@@ -96,7 +96,9 @@ public partial class ControlSettingsPage : SettingsPageBase
         ErrorBar.IsOpen = error.Length > 0;
         TimetableStatusText.Text = !enrolled
             ? "未加入集控"
-            : _status.TimetableSummary.Length > 0 ? _status.TimetableSummary : "尚未同步";
+            : _status.TimetableSummary.Length > 0 ? _status.TimetableSummary : "尚未同步";        CrashStatusText.Text = !enrolled
+            ? "未加入集控"
+            : _status.CrashSummary.Length > 0 ? _status.CrashSummary : "本机无崩溃记录";
     }
 
     private async void OnTimetableToggleChanged(object? sender, Avalonia.Interactivity.RoutedEventArgs e)

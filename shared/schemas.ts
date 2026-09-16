@@ -137,6 +137,28 @@ export const policyPublishSchema = z.discriminatedUnion("scopeType", [
   refineTimeSection(value.document, ctx);
 });
 
+/**
+ * 设备端崩溃上报：插件捕获未处理异常后随轮询上报，服务端按指纹归组统计。
+ * 指纹由服务端统一计算（异常类型 + 规范化栈帧），保证跨插件版本的归组一致。
+ */
+export const crashKinds = ["unhandled-exception", "unobserved-task", "ui-thread", "host-exit"] as const;
+export type CrashKind = (typeof crashKinds)[number];
+
+export const crashReportSchema = z.object({
+  /** 客户端生成的一次性 ID：同一份报告重传时按主键去重。 */
+  id: z.string().trim().min(8).max(64),
+  occurredAtUtc: z.string().trim().min(8).max(40),
+  // 崩溃数据一律“降级容忍”：字段异常时取兜底值，绝不让整轮轮询因上报而失败，
+  // 否则一台设备会因为一条坏报告永久卡在 400 上。
+  kind: z.enum(crashKinds).catch("unhandled-exception"),
+  exceptionType: z.string().trim().min(1).max(200).catch("UnknownException"),
+  message: z.string().max(1000).default(""),
+  stackTrace: z.string().max(8000).default(""),
+  threadName: z.string().max(60).default(""),
+  appVersion: z.string().max(32).default(""),
+  pluginVersion: z.string().max(32).default(""),
+  platform: z.string().max(80).default(""),
+});
 const sectionStateSchema = z.record(z.string(), z.enum(["applied", "skipped", "failed"]));
 
 /**
@@ -175,6 +197,8 @@ export const pollSchema = z.object({
   driftCount: z.number().int().nonnegative(),
   // 设备已应用的点名名单修订；与集控端当前名单一致时响应里不再回带名单本体。
   rollCallRevision: z.number().int().nonnegative().default(0),
+  // 崩溃上报：设备端未送达的报告会一直留在本地 outbox，直到某次轮询被服务端接收。
+  crashes: z.array(crashReportSchema).max(20).default([]),
   acknowledgements: z.array(z.object({
     commandId: z.string().uuid(),
     state: z.enum(["received", "running", "succeeded", "failed", "conflict", "unsupported", "expired", "cancelled"]),

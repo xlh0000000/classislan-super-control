@@ -1,9 +1,9 @@
 const rolePermissions: Record<string, Set<string>> = {
   owner: new Set(["*"]),
-  admin: new Set(["dashboard.read", "devices.read", "enrollment.write", "devices.write", "organization.read", "organization.write", "policies.read", "policies.write", "configurations.read", "configurations.write", "tasks.read", "tasks.write", "audit.read", "system.read", "system.write", "users.read", "users.write", "rollcall.read", "rollcall.write"]),
-  operator: new Set(["dashboard.read", "devices.read", "devices.write", "tasks.read", "tasks.write", "audit.read", "rollcall.read"]),
-  auditor: new Set(["audit.read"]),
-  viewer: new Set(["dashboard.read", "devices.read", "organization.read", "policies.read", "configurations.read", "tasks.read", "system.read", "rollcall.read"]),
+  admin: new Set(["dashboard.read", "devices.read", "enrollment.write", "devices.write", "organization.read", "organization.write", "policies.read", "policies.write", "configurations.read", "configurations.write", "tasks.read", "tasks.write", "audit.read", "system.read", "system.write", "users.read", "users.write", "rollcall.read", "rollcall.write", "crashes.read", "crashes.write"]),
+  operator: new Set(["dashboard.read", "devices.read", "devices.write", "tasks.read", "tasks.write", "audit.read", "rollcall.read", "crashes.read"]),
+  auditor: new Set(["audit.read", "crashes.read"]),
+  viewer: new Set(["dashboard.read", "devices.read", "organization.read", "policies.read", "configurations.read", "tasks.read", "system.read", "rollcall.read", "crashes.read"]),
 };
 
 export function requirePermission(user: { role: string }, permission: string) {

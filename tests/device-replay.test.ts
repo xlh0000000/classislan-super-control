@@ -33,7 +33,7 @@ function input(sequence: number): DevicePollInput {
   return {
     deviceId: DEVICE_ID, sequence, timestampUtc: NOW, pluginVersion: "0.1.0", appVersion: "2.1.1.1",
     platform: "Windows/x64", capabilityDigest: "cap-1", policyRevision: 0, policyEpoch: 0, policyHash: "",
-    driftCount: 0, acknowledgements: [],
+    driftCount: 0, acknowledgements: [], crashes: [],
   };
 }
 

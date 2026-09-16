@@ -2,6 +2,7 @@ import { assertDeviceInScope } from "../../../../../utils/scope";
 import { materializeConfigReferences, resolvePolicyForDeviceFromDb } from "../../../../../utils/policy";
 import { canonicalJson, sha256 } from "../../../../../utils/security";
 import { readDeviceTimetable } from "../../../../../utils/device-timetable";
+import { deviceCrashSummary } from "../../../../../utils/crash-reports";
 
 export default defineEventHandler((event) => {
   const user = event.context.user as { id: string; role: string; scopeOrgNodeId?: string | null };
@@ -76,5 +77,6 @@ export default defineEventHandler((event) => {
     // 课表档案（贡献者：威廉）：设备经轮询上报的本地课表快照与存档状态。
     timetable,
     timetableStatus,
+    crashStatus: deviceCrashSummary(db, id),
   };
 });

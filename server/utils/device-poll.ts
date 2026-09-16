@@ -9,6 +9,7 @@ import { materializeConfigReferences, resolvePolicyForDeviceFromDb } from "./pol
 import { resolveRollCallForDevice } from "./rollcall";
 import { signResponseBody } from "./server-signing";
 import { timetableDigestMatches, upsertDeviceTimetable } from "./device-timetable";
+import { recordCrashReports } from "./crash-reports";
 
 export type DevicePollInput = z.infer<typeof pollSchema>;
 
@@ -69,8 +70,8 @@ export function processDevicePoll(
     }
     // 2) 新请求必须严格为 last+1。仅当序列等于 last（升级前的历史序列、尚未写入缓存）时，
     //    允许重算一次并补写缓存，避免老设备被卡死。
-    const current = db.prepare("SELECT last_sequence lastSequence, applied_policy_hash appliedPolicyHash, drift_count driftCount, transport transport FROM devices WHERE id=? AND disabled_at IS NULL")
-      .get(deviceId) as { lastSequence: number; appliedPolicyHash: string | null; driftCount: number; transport: string } | undefined;
+    const current = db.prepare("SELECT last_sequence lastSequence, applied_policy_hash appliedPolicyHash, drift_count driftCount, transport transport, org_node_id orgNodeId FROM devices WHERE id=? AND disabled_at IS NULL")
+      .get(deviceId) as { lastSequence: number; appliedPolicyHash: string | null; driftCount: number; transport: string; orgNodeId: string | null } | undefined;
     if (!current) throw createError({ statusCode: 401, message: "未知或已禁用的设备。" });
     const isNextSequence = sequence === current.lastSequence + 1;
     const isLegacyRetry = sequence === current.lastSequence;
@@ -172,6 +173,20 @@ export function processDevicePoll(
       upsertDeviceTimetable(db, deviceId, { digest: input.timetableDigest, timetable: input.timetable }, seenAt);
     } else if (input.timetableDigest !== undefined) {
       timetableRequired = !timetableDigestMatches(db, deviceId, input.timetableDigest);
+    }
+    // 崩溃上报：与命令、策略在同一个事务里落库；客户端生成的主键让重传天然幂等。
+    if (input.crashes.length > 0) {
+      const ingested = recordCrashReports(db, { deviceId, orgNodeId: current.orgNodeId }, input.crashes, seenAt);
+      if (ingested.accepted > 0)
+        appendAuditWithin(db, {
+          actorType: "device", actorId: deviceId, action: "device.crash.report", targetType: "device", targetId: deviceId,
+          summary: `设备上报 ${ingested.accepted} 条崩溃记录`,
+          details: {
+            accepted: ingested.accepted,
+            trimmed: ingested.trimmed,
+            kinds: [...new Set(input.crashes.map((report) => report.kind))],
+          },
+        });
     }
     const responseBody = JSON.stringify({
       serverTimeUtc: seenAt,

@@ -88,6 +88,11 @@
             <TextBlock x:Name="TimetableStatusText" VerticalAlignment="Center" TextAlignment="Right"
                        MaxWidth="420" TextWrapping="Wrap" Text="尚未同步"/>
           </controls:FASettingsExpanderItem.Footer>
+        </controls:FASettingsExpanderItem>        <controls:FASettingsExpanderItem Content="崩溃上报" Description="本机未处理异常会记录并在下次连接时上报给集控端。">
+          <controls:FASettingsExpanderItem.Footer>
+            <TextBlock x:Name="CrashStatusText" VerticalAlignment="Center" TextAlignment="Right"
+                       MaxWidth="420" TextWrapping="Wrap" Text="本机无崩溃记录"/>
+          </controls:FASettingsExpanderItem.Footer>
         </controls:FASettingsExpanderItem>
       </StackPanel>
 

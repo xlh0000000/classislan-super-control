@@ -132,7 +132,7 @@ function poll(db: Database.Database, sequence: number, rollCallRevision: number)
   const input: DevicePollInput = {
     deviceId: DEVICE_1, sequence, timestampUtc: NOW, pluginVersion: "0.1.0", appVersion: "2.1.1.1",
     platform: "Windows/x64", capabilityDigest: "cap-1", policyRevision: 0, policyEpoch: 0,
-    policyHash: "", driftCount: 0, acknowledgements: [], rollCallRevision,
+    policyHash: "", driftCount: 0, acknowledgements: [], crashes: [], rollCallRevision,
   };
   const outcome = processDevicePoll(db, {
     rawBody: "{}", deviceId: DEVICE_1, sequence, timestampUtc: NOW,

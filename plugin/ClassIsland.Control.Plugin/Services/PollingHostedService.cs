@@ -24,6 +24,7 @@ public sealed class PollingHostedService(
     TimeOffsetService timeOffset,
     RollCallStore rollCall,
     TimetableSnapshotService timetable,
+    CrashReporter crashReporter,
     AgentStatus status,
     IServiceProvider services,
     ILogger<PollingHostedService> logger) : BackgroundService
@@ -134,6 +135,8 @@ public sealed class PollingHostedService(
                 var timetableEnabled = store.Settings.TimetableUploadEnabled && timetable.Available;
                 var timetableDigest = timetableEnabled ? timetable.Digest : null;
                 var timetableSnapshot = timetableEnabled && timetable.IsDirty ? timetable.Snapshot : (JsonElement?)null;
+                // 崩溃上报：只带上仍未被服务端确认的报告，确认后才从本地 outbox 移除。
+                var crashes = crashReporter.Pending();
                 // 重试必须重建正文：服务端会校验时间戳窗口，复用旧正文会让设备永久卡在 401。
                 // 仅沿用上一次未确认的序列号，保证不跳号、又不重复占用已入库的序列。
                 var request = new PollRequest(
@@ -153,7 +156,8 @@ public sealed class PollingHostedService(
                     state.AppliedSections,
                     rollCall.Snapshot.Revision,
                     timetableDigest,
-                    timetableSnapshot);
+                    timetableSnapshot,
+                    crashes.Count > 0 ? crashes : null);
                 if (request.AppliedSections is null) request = request with { AppliedSections = new Dictionary<string, string>() };
                 if (state.PendingPoll?.Sequence != request.Sequence)
                 {
@@ -193,6 +197,9 @@ public sealed class PollingHostedService(
                         ? "宿主未提供档案服务，课表上传不可用"
                         : "课表上传已关闭");
                 }
+                // 崩溃上报：轮询已被服务端接收（入库发生在响应构建之前），此时才清空本地 outbox。
+                if (crashes.Count > 0) crashReporter.Confirm(crashes.Select(report => report.Id));
+                status.CrashUpdated(crashReporter.Summary());
                 state = state with { PendingPoll = null };
                 // 只删除服务端明确回执（accepted/already-recorded）的 ACK；被拒绝的结果必须保留并告警，
                 // 否则“管理员已取消但设备实际执行成功”等冲突会被静默丢弃。

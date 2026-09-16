@@ -473,7 +473,34 @@ const deviceTimetables: Migration = {
   },
 };
 
-export const migrations: Migration[] = [baseline, taskOrchestration, enrollmentIdempotency, orgScopeRbac, policyEpochAndCas, taskPauseAndCancel, deviceResponseReplay, sessionsTable, enrollmentTokenTags, taskIdempotencyScope, auditCheckpoints, buildingLayout, policyAppendMode, deviceTransport, rollCallRoster, deviceTimetables];
+const crashReports: Migration = {
+  id: "0016-crash-reports",
+  up(db) {
+    // 设备端崩溃上报：一条记录 = 一次未处理异常（或一次非正常退出）。
+    // 刻意不建 devices 外键：设备被删除后历史崩溃仍要留在统计里，org_node_id 冗余落库
+    // 以便按组织范围过滤；fingerprint 由服务端按 异常类型 + 规范化栈帧 计算。
+    db.exec(`CREATE TABLE IF NOT EXISTS crash_reports (
+      id TEXT PRIMARY KEY,
+      device_id TEXT NOT NULL,
+      org_node_id TEXT,
+      occurred_at TEXT NOT NULL,
+      received_at TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      exception_type TEXT NOT NULL,
+      message TEXT NOT NULL DEFAULT '',
+      stack_trace TEXT NOT NULL DEFAULT '',
+      fingerprint TEXT NOT NULL,
+      thread_name TEXT NOT NULL DEFAULT '',
+      app_version TEXT NOT NULL DEFAULT '',
+      plugin_version TEXT NOT NULL DEFAULT '',
+      platform TEXT NOT NULL DEFAULT ''
+    ) STRICT`);
+    db.exec("CREATE INDEX IF NOT EXISTS idx_crash_reports_device ON crash_reports(device_id, occurred_at)");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_crash_reports_fingerprint ON crash_reports(fingerprint, occurred_at)");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_crash_reports_occurred ON crash_reports(occurred_at)");
+  },
+};
+export const migrations: Migration[] = [baseline, taskOrchestration, enrollmentIdempotency, orgScopeRbac, policyEpochAndCas, taskPauseAndCancel, deviceResponseReplay, sessionsTable, enrollmentTokenTags, taskIdempotencyScope, auditCheckpoints, buildingLayout, policyAppendMode, deviceTransport, rollCallRoster, deviceTimetables, crashReports];
 
 /** 对除 schema_migrations 外的全部 schema 对象做稳定指纹，用于校验迁移记录与真实 schema 是否一致。 */
 export function schemaFingerprint(db: Database.Database) {

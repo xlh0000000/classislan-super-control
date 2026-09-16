@@ -85,11 +85,12 @@ describe("schema migrations", () => {
     const db = createDbBehindBy(migrations.length - 1);
     const before = migrationRows(db);
     expect(before.map((row) => row.id)).toEqual(migrations.slice(0, -1).map((migration) => migration.id));
-    // 只落后一条：倒数第二条迁移（点名名单）的效果已在，最后一条（设备课表档案）的还没有。
+    // 只落后一条：倒数第二条迁移（设备课表档案）的效果已在，最后一条（崩溃上报）的还没有。
     const columnsBefore = (db.prepare("PRAGMA table_info(devices)").all() as { name: string }[]).map((column) => column.name);
     expect(columnsBefore).toContain("transport");
     expect(tableExists(db, "rollcall_rosters")).toBe(true);
-    expect(tableExists(db, "device_timetables")).toBe(false);
+    expect(tableExists(db, "device_timetables")).toBe(true);
+    expect(tableExists(db, "crash_reports")).toBe(false);
     db.prepare("INSERT INTO system_state (key,value,updated_at) VALUES ('kept','yes',?)").run("2026-09-11T00:00:00.000Z");
 
     migrate(db);
@@ -99,6 +100,7 @@ describe("schema migrations", () => {
     // 既有迁移记录逐字节不变，只有缺失的那一条被追加。
     expect(after.slice(0, -1)).toEqual(before);
     expect(tableExists(db, "device_timetables")).toBe(true);
+    expect(tableExists(db, "crash_reports")).toBe(true);
     // 升级不破坏已有业务数据。
     expect((db.prepare("SELECT value FROM system_state WHERE key='kept'").get() as { value: string }).value).toBe("yes");
     // 升级后 schema 与最后一条记录指纹一致，随后再次 migrate() 为空操作。
