@@ -11,7 +11,7 @@
 ![SQLite](https://img.shields.io/badge/SQLite-WAL-003B57?logo=sqlite&logoColor=white)
 ![License](https://img.shields.io/badge/License-GPL--3.0-3DA639?logo=gnu&logoColor=white)
 
-Web 管理端（Nuxt/Nitro · SQLite WAL）+ 设备插件（.NET · ClassIsland Plugin SDK 2.1.1.1）
+Web 管理端（Nuxt/Nitro · SQLite WAL）+ 设备插件（.NET · ClassIsland Plugin SDK 2.1.0.1）
 
 </div>
 

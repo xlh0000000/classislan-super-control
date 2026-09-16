@@ -3,6 +3,7 @@
  * 读写都做大小写不敏感的键匹配，因为宿主自身用 PascalCase 写 Profile.json，
  * 而插件用 JsonSerializerDefaults.Web（camelCase）读取；两端的键名都可能出现。
  * 编辑器只改动已知字段，其余字段原样保留在 `extra` 里，保证往返不丢数据。
+ * 贡献者：威廉（overlay 字段支持、课表上传快照复用）
  */
 
 export const DEFAULT_CLASS_PLAN_GROUP_ID = "acaf4ef0-e261-4262-b941-34ea93cb4369";
@@ -35,7 +36,15 @@ export type CiTimeLayoutItem = {
   extra: Record<string, unknown>;
 };
 
-export type CiTimeLayout = { id: string; name: string; layouts: CiTimeLayoutItem[]; extra: Record<string, unknown> };
+export type CiTimeLayout = {
+  id: string;
+  name: string;
+  layouts: CiTimeLayoutItem[];
+  /** 覆盖层时间表（临时作息叠加），缺省为普通时间表。 */
+  isOverlay?: boolean;
+  overlaySourceId?: string;
+  extra: Record<string, unknown>;
+};
 
 export type CiClassInfo = { subjectId: string; isChangedClass: boolean; isEnabled: boolean; extra: Record<string, unknown> };
 
@@ -49,6 +58,9 @@ export type CiClassPlan = {
   timeRule: CiTimeRule;
   associatedGroup: string;
   isEnabled: boolean;
+  /** 覆盖层课表（临时换课叠加），缺省为普通课表。 */
+  isOverlay?: boolean;
+  overlaySourceId?: string;
   extra: Record<string, unknown>;
 };
 
@@ -67,9 +79,9 @@ export type CiProfile = {
 };
 
 const MANAGED_ROOT_KEYS = ["name", "timelayouts", "classplans", "subjects", "classplaingroups", "selectedclassplaingroupid", "schemaversion"];
-const MANAGED_LAYOUT_KEYS = ["name", "layouts"];
+const MANAGED_LAYOUT_KEYS = ["name", "layouts", "isoverlay", "overlaysourceid"];
 const MANAGED_LAYOUT_ITEM_KEYS = ["starttime", "endtime", "timetype", "breakname", "ishidedefault", "defaultclassid"];
-const MANAGED_PLAN_KEYS = ["name", "timelayoutid", "classes", "timerule", "associatedgroup", "isenabled"];
+const MANAGED_PLAN_KEYS = ["name", "timelayoutid", "classes", "timerule", "associatedgroup", "isenabled", "isoverlay", "overlaysourceid"];
 const MANAGED_CLASS_KEYS = ["subjectid", "ischangedclass", "isenabled"];
 const MANAGED_SUBJECT_KEYS = ["name", "initial", "teachername", "isoutdoor"];
 const MANAGED_GROUP_KEYS = ["name", "isglobal"];
@@ -140,12 +152,17 @@ function readLayoutItem(raw: unknown): CiTimeLayoutItem {
 
 function readTimeLayout(id: string, raw: unknown): CiTimeLayout {
   const record = asRecord(raw) ?? {};
-  return {
+  const layout: CiTimeLayout = {
     id,
     name: asString(ciGet(record, "name"), "时间表"),
     layouts: Array.isArray(ciGet(record, "layouts")) ? (ciGet(record, "layouts") as unknown[]).map(readLayoutItem) : [],
     extra: extraKeys(record, MANAGED_LAYOUT_KEYS),
   };
+  const isOverlay = ciGet(record, "isOverlay");
+  if (isOverlay !== undefined) layout.isOverlay = asBool(isOverlay);
+  const overlaySourceId = ciGet(record, "overlaySourceId");
+  if (overlaySourceId !== undefined && overlaySourceId !== null) layout.overlaySourceId = asString(overlaySourceId);
+  return layout;
 }
 
 function readClassInfo(raw: unknown): CiClassInfo {
@@ -170,7 +187,7 @@ function readTimeRule(raw: unknown): CiTimeRule {
 function readClassPlan(id: string, raw: unknown): CiClassPlan {
   const record = asRecord(raw) ?? {};
   const classesRaw = ciGet(record, "classes");
-  return {
+  const plan: CiClassPlan = {
     id,
     name: asString(ciGet(record, "name"), "新课表"),
     timeLayoutId: asString(ciGet(record, "timeLayoutId")),
@@ -180,6 +197,11 @@ function readClassPlan(id: string, raw: unknown): CiClassPlan {
     isEnabled: asBool(ciGet(record, "isEnabled"), true),
     extra: extraKeys(record, MANAGED_PLAN_KEYS),
   };
+  const isOverlay = ciGet(record, "isOverlay");
+  if (isOverlay !== undefined) plan.isOverlay = asBool(isOverlay);
+  const overlaySourceId = ciGet(record, "overlaySourceId");
+  if (overlaySourceId !== undefined && overlaySourceId !== null) plan.overlaySourceId = asString(overlaySourceId);
+  return plan;
 }
 
 function readSubject(id: string, raw: unknown): CiSubject {
@@ -330,6 +352,8 @@ export function writeProfileDocument(profile: CiProfile): Record<string, unknown
       {
         ...layout.extra,
         name: layout.name,
+        ...(layout.isOverlay !== undefined ? { isOverlay: layout.isOverlay } : {}),
+        ...(layout.overlaySourceId ? { overlaySourceId: layout.overlaySourceId } : {}),
         layouts: layout.layouts.map((item) => ({
           ...item.extra,
           startTime: toTimeSpan(item.startTime),
@@ -349,6 +373,8 @@ export function writeProfileDocument(profile: CiProfile): Record<string, unknown
         ...plan.extra,
         name: plan.name,
         timeLayoutId: plan.timeLayoutId,
+        ...(plan.isOverlay !== undefined ? { isOverlay: plan.isOverlay } : {}),
+        ...(plan.overlaySourceId ? { overlaySourceId: plan.overlaySourceId } : {}),
         classes: plan.classes.map((info) => ({
           ...info.extra,
           subjectId: info.subjectId || GLOBAL_CLASS_PLAN_GROUP_ID,

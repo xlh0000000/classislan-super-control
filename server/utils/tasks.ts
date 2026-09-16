@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import { appendAuditWithin } from "./security";
+import { pushToDevice } from "./device-ws-registry";
 
 export type CommandRow = {
   id: string;
@@ -152,6 +153,10 @@ export function advanceTaskState(db: Database.Database, at?: string): void {
       VALUES (?,?,?,?,?,?,?,?,?,?)`);
     for (const deviceId of JSON.parse(next.device_ids) as string[])
       insertCommand.run(randomUUID(), task.id, deviceId, task.capability_id, task.payload, task.scheduled_at ?? now, task.expires_at, "pending", task.mode === "all" ? 1 : 2, now);
+    // 实时广播（贡献者：威廉）：该批次在线设备立即收到 notify，马上 poll 领取命令，不再等下一次轮询。
+    const offeredAt = nowIso();
+    for (const deviceId of JSON.parse(next.device_ids) as string[])
+      pushToDevice(deviceId, { type: "notify", event: "commands.offered", serverTimeUtc: offeredAt, detail: { taskId: task.id } });
   }
 
   // 9. 父任务聚合：所有命令终态且无待放量批次后，落 completed/failed/partial_failure/expired/cancelled。

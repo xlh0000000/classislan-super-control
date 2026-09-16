@@ -13,6 +13,9 @@ public sealed record PluginSettings
     /// </summary>
     public string Transport { get; init; } = "http";
 
+    /// <summary>课表上传：开启后自动采集本机档案并随连接上报到集控端。</summary>
+    public bool TimetableUploadEnabled { get; init; } = true;
+
     /// <summary>点名悬浮窗：是否常驻显示。名单本身由集控端下发，本机不可编辑。</summary>
     public bool RollCallEnabled { get; init; }
     /// <summary>悬浮窗宽度（逻辑像素）。</summary>

@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { nowIso, useDatabase } from "./database";
 import { appendAuditWithin, sha256 } from "./security";
 import { assertDeviceInScope, assertOrgNodeInScope, hasSchoolWideScope, type ScopeUser } from "./scope";
+import { broadcastNotify } from "./device-ws-registry";
 
 export type PolicyLayer = {
   scopeType: "school" | "organization" | "tag" | "device";
@@ -301,6 +302,8 @@ export function publishPolicy(
       summary: `发布策略 R${nextRevision} · ${input.name}`,
       details: { scopeType: input.scopeType, scopeId: input.scopeId, locks, epoch, baseRevision: input.baseRevision ?? null, assignmentId, mode },
     });
+    // 实时广播（贡献者：威廉）：策略变化会波及任意设备，在线设备立即收到 notify 主动同步。
+    broadcastNotify("policy.published", { revision: nextRevision, epoch });
     return { id: revisionId, revision: nextRevision, epoch, assignmentId, documentHash, mode, scopeType: input.scopeType, scopeId: input.scopeId };
   })();
 }

@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+// 贡献者：威廉（课表上传 timetableDigest/timetable 字段）
+
 export const initializeSchema = z.object({
   schoolName: z.string().trim().min(2).max(80),
   username: z.string().trim().min(3).max(32).regex(/^[A-Za-z0-9_.-]+$/),
@@ -137,6 +139,20 @@ export const policyPublishSchema = z.discriminatedUnion("scopeType", [
 
 const sectionStateSchema = z.record(z.string(), z.enum(["applied", "skipped", "failed"]));
 
+/**
+ * 设备上报的课表档案快照（与 ClassIsland Profile 同构，camelCase）：
+ * 根对象 + 四个字典（键为 guid）+ 当前选中课表群。深层内容不做强校验，
+ * 由服务端 digest（JCS + SHA-256）保证完整性，形状仅做入口把关。
+ */
+export const ciTimetableSchema = z.object({
+  name: z.string().max(200).optional(),
+  timeLayouts: z.record(z.string().uuid(), z.unknown()).optional(),
+  classPlans: z.record(z.string().uuid(), z.unknown()).optional(),
+  subjects: z.record(z.string().uuid(), z.unknown()).optional(),
+  classPlanGroups: z.record(z.string().uuid(), z.unknown()).optional(),
+  selectedClassPlanGroupId: z.string().max(64).optional(),
+}).passthrough();
+
 export const pollSchema = z.object({
   deviceId: z.string().uuid(),
   sequence: z.number().int().nonnegative(),
@@ -166,6 +182,9 @@ export const pollSchema = z.object({
     policyEpoch: z.number().int().nonnegative().optional(),
     appliedSections: sectionStateSchema.optional(),
   })).max(100).default([]),
+  // 课表上传：每轮必报摘要（可选），内容变化时携带全量快照。
+  timetableDigest: z.string().max(128).optional(),
+  timetable: ciTimetableSchema.optional(),
 });
 export const configurationKinds = ["profile", "components", "automation", "plugin", "settings"] as const;
 export type ConfigurationKind = (typeof configurationKinds)[number];

@@ -11,21 +11,30 @@ using Microsoft.Extensions.Logging;
 
 namespace ClassIsland.Control.Plugin.Services;
 
+// 贡献者：威廉（课表上传携带与改动唤醒上报 / WebSocket 双态分叉与主动推送唤醒）
+
 public sealed class PollingHostedService(
     PluginSettingsStore store,
     ControlPlaneClient client,
+    WebSocketSession session,
     CapabilityCatalog capabilities,
     PolicyApplyService policyApply,
     PolicySnapshotStore snapshots,
     HostOperationService operations,
     TimeOffsetService timeOffset,
     RollCallStore rollCall,
+    TimetableSnapshotService timetable,
     AgentStatus status,
     IServiceProvider services,
     ILogger<PollingHostedService> logger) : BackgroundService
 {
     private static readonly JsonSerializerOptions JsonOptions = ProtocolJson.Options;
     private readonly TaskCompletionSource _appStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    /// <summary>课表改动唤醒句柄：本机档案变化时提前醒来上报，不等下一次定时轮询。</summary>
+    private TaskCompletionSource _changeWake = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    /// <summary>实时通道唤醒句柄：集控端主动推送（notify）或长连接断开时提前醒来上报。</summary>
+    private TaskCompletionSource _notifyWake = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private DateTime? _lastTimetableChangeUtc;
 
     public override async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -45,6 +54,33 @@ public sealed class PollingHostedService(
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await _appStarted.Task.WaitAsync(stoppingToken);
+        // 课表上传：本机档案改动时提前醒来上报（不改变轮询本身的节奏）。
+        timetable.Changed += OnTimetableChanged;
+        // 实时模式：集控端主动推送（notify）或长连接断开时提前醒来上报。
+        session.Notified += OnSessionWake;
+        session.ConnectionLost += OnSessionWake;
+        try
+        {
+            await ExecuteLoopAsync(stoppingToken);
+        }
+        finally
+        {
+            timetable.Changed -= OnTimetableChanged;
+            session.Notified -= OnSessionWake;
+            session.ConnectionLost -= OnSessionWake;
+        }
+    }
+
+    private void OnTimetableChanged()
+    {
+        _lastTimetableChangeUtc = DateTime.UtcNow;
+        _changeWake.TrySetResult();
+    }
+
+    private void OnSessionWake() => _notifyWake.TrySetResult();
+
+    private async Task ExecuteLoopAsync(CancellationToken stoppingToken)
+    {
         await RecoverJournalAsync(stoppingToken);
         if (!string.IsNullOrWhiteSpace(store.State.DeviceId))
         {
@@ -66,12 +102,15 @@ public sealed class PollingHostedService(
                 {
                     await store.ReleaseEnrollmentAsync(stoppingToken);
                     status.EnrollmentReleased();
+                    // 身份已清空：长连接对旧身份毫无意义，立即断开让服务端不再推送。
+                    await client.CloseWebSocketAsync();
                     logger.LogInformation("Control plane released this device (command {CommandId}).", release.CommandId);
                     await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
                     continue;
                 }
                 if (string.IsNullOrWhiteSpace(store.Settings.ServerUrl))
                 {
+                    await client.CloseWebSocketAsync();
                     status.Waiting("未配置服务器地址，请填写集控地址与一次性接入码");
                     await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
                     continue;
@@ -81,6 +120,7 @@ public sealed class PollingHostedService(
                     // 已由集控端解除接入：保持空闲等待管理员重新下发接入码，不再重试注册。
                     if (string.IsNullOrWhiteSpace(store.Settings.EnrollmentToken))
                     {
+                        await client.CloseWebSocketAsync();
                         status.Waiting("未加入集控：请填写一次性接入码");
                         await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
                         continue;
@@ -90,6 +130,10 @@ public sealed class PollingHostedService(
                 var catalog = capabilities.Detect();
                 var digest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(catalog)))).ToLowerInvariant();
                 var state = store.State;
+                // 课表上传：开启且宿主可用时每轮带摘要；本机档案有改动时带全量快照。
+                var timetableEnabled = store.Settings.TimetableUploadEnabled && timetable.Available;
+                var timetableDigest = timetableEnabled ? timetable.Digest : null;
+                var timetableSnapshot = timetableEnabled && timetable.IsDirty ? timetable.Snapshot : (JsonElement?)null;
                 // 重试必须重建正文：服务端会校验时间戳窗口，复用旧正文会让设备永久卡在 401。
                 // 仅沿用上一次未确认的序列号，保证不跳号、又不重复占用已入库的序列。
                 var request = new PollRequest(
@@ -107,7 +151,9 @@ public sealed class PollingHostedService(
                     state.DriftCount,
                     state.PendingAcknowledgements.ToArray(),
                     state.AppliedSections,
-                    rollCall.Snapshot.Revision);
+                    rollCall.Snapshot.Revision,
+                    timetableDigest,
+                    timetableSnapshot);
                 if (request.AppliedSections is null) request = request with { AppliedSections = new Dictionary<string, string>() };
                 if (state.PendingPoll?.Sequence != request.Sequence)
                 {
@@ -124,6 +170,7 @@ public sealed class PollingHostedService(
                 {
                     await store.ApplyServerTransportAsync(transport, stoppingToken);
                     if (transport != "websocket") await client.CloseWebSocketAsync();
+                    else _notifyWake.TrySetResult(); // 切到实时模式：立刻建立常驻连接
                     logger.LogInformation("Control plane switched the transport to {Transport}.", transport);
                 }
                 // 自动时间偏移：以集控端时间为基准闭环校正宿主时钟；未启用时是空操作。
@@ -131,6 +178,21 @@ public sealed class PollingHostedService(
                 // 点名名单：服务端只在设备手上的修订过期时回带，落盘后供悬浮窗离线使用。
                 if (response.RollCall is { } roster)
                     await rollCall.ApplyAsync(roster.Revision, roster.Names, stoppingToken);
+                // 课表上传：服务端要求重传时强制下次带全量；接受后清除待重传标记。
+                if (timetableEnabled)
+                {
+                    if (response.TimetableRequired) timetable.ForceRetransmit();
+                    else timetable.MarkUploaded();
+                    status.TimetableUpdated(timetable.IsDirty
+                        ? "课表已采集，等待上传"
+                        : $"已上传 · 课表 {timetable.ClassPlansCount} · 时间表 {timetable.TimeLayoutsCount} · 科目 {timetable.SubjectsCount} · 群 {timetable.ClassPlanGroupsCount} · 摘要 {timetable.Digest[..8]}");
+                }
+                else
+                {
+                    status.TimetableUpdated(store.Settings.TimetableUploadEnabled
+                        ? "宿主未提供档案服务，课表上传不可用"
+                        : "课表上传已关闭");
+                }
                 state = state with { PendingPoll = null };
                 // 只删除服务端明确回执（accepted/already-recorded）的 ACK；被拒绝的结果必须保留并告警，
                 // 否则“管理员已取消但设备实际执行成功”等冲突会被静默丢弃。
@@ -209,7 +271,8 @@ public sealed class PollingHostedService(
                     ? state with { Sequence = 0, DriftCount = 0 }
                     : state with { Sequence = state.Sequence + 1, DriftCount = driftCount };
                 await store.SaveStateAsync(state, stoppingToken);
-                nextSeconds = Math.Clamp(response.NextPollSeconds, 5, 30);
+                // 实时模式的定时只是兜底（上限 60 秒）：集控端 notify 会随时唤醒，不必按 HTTP 轮询的 30 秒上限赶点。
+                nextSeconds = Math.Clamp(response.NextPollSeconds, 5, store.Settings.Transport == "websocket" ? 60 : 30);
                 if (driftCount > 0) nextSeconds = Math.Min(nextSeconds, 15);
                 status.AttemptSucceeded();
                 failures = 0;
@@ -239,11 +302,21 @@ public sealed class PollingHostedService(
             {
                 status.AttemptFailed(exception.Message);
                 failures++;
-                nextSeconds = Math.Min(600, (int)Math.Pow(2, Math.Min(failures, 8)));
+                // 实时模式退避到 60 秒封顶：长连接失败时 ConnectionLost 会立即唤醒重连，无需按 HTTP 指数退避干等。
+                var backoffCap = store.Settings.Transport == "websocket" ? 60 : 600;
+                nextSeconds = Math.Min(backoffCap, (int)Math.Pow(2, Math.Min(failures, 8)));
                 logger.LogWarning(exception, "ClassIsland Control polling failed; retrying in {Delay}s", nextSeconds);
             }
+            var wake = _changeWake;
+            _changeWake = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var notifyWake = _notifyWake;
+            _notifyWake = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var jitter = Random.Shared.NextDouble() * .4 + .8;
-            await Task.Delay(TimeSpan.FromSeconds(nextSeconds * jitter), stoppingToken);
+            // 本机课表刚改动：最多等 5 秒就醒来上报，其余情况按服务端节奏休眠。
+            var changedRecently = _lastTimetableChangeUtc is { } at && DateTime.UtcNow - at < TimeSpan.FromSeconds(5);
+            var delay = TimeSpan.FromSeconds((changedRecently ? Math.Min(nextSeconds, 5) : nextSeconds) * jitter);
+            // 实时模式：集控端主动推送（notify）或长连接断开时立即醒来，不必等完整个定时。
+            await Task.WhenAny(wake.Task, notifyWake.Task, Task.Delay(delay, stoppingToken));
         }
     }
 
@@ -319,6 +392,10 @@ public sealed class PollingHostedService(
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
         AppBase.Current.AppStarted -= OnAppStarted;
+        timetable.Changed -= OnTimetableChanged;
+        session.Notified -= OnSessionWake;
+        session.ConnectionLost -= OnSessionWake;
+        await client.CloseWebSocketAsync();
         await base.StopAsync(cancellationToken);
     }
 }

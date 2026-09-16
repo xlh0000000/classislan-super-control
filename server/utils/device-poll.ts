@@ -8,6 +8,7 @@ import { advanceTaskState, claimCommandsForDevice, terminalCommandStates } from 
 import { materializeConfigReferences, resolvePolicyForDeviceFromDb } from "./policy";
 import { resolveRollCallForDevice } from "./rollcall";
 import { signResponseBody } from "./server-signing";
+import { timetableDigestMatches, upsertDeviceTimetable } from "./device-timetable";
 
 export type DevicePollInput = z.infer<typeof pollSchema>;
 
@@ -164,11 +165,21 @@ export function processDevicePoll(
         summary: `设备策略未收敛（已应用 R${reportedRevision}，期望 R${policy.revision}）`,
         details: { reportedEpoch, reportedRevision, reportedHash, reportedDrift, desiredEpoch: policy.epoch, desiredRevision: policy.revision, desiredHash: policyHash },
       });
+    // 课表上传：携带全量快照时覆盖写入存档（摘要不符直接拒绝）；
+    // 仅报摘要时检查服务端是否已对齐，未对齐则要求设备重传全量。
+    let timetableRequired = false;
+    if (input.timetable !== undefined) {
+      upsertDeviceTimetable(db, deviceId, { digest: input.timetableDigest, timetable: input.timetable }, seenAt);
+    } else if (input.timetableDigest !== undefined) {
+      timetableRequired = !timetableDigestMatches(db, deviceId, input.timetableDigest);
+    }
     const responseBody = JSON.stringify({
       serverTimeUtc: seenAt,
       // 连接模式随每次响应回带：管理端改动后，设备在下一轮就自动切换传输。
       transport: current.transport,
       nextPollSeconds: commands.length ? 5 : input.driftCount ? 15 : 30,
+      // 课表重传要求：客户端据此决定下一轮是否携带全量快照。
+      timetableRequired,
       // 逐条回执：设备只删除被明确接受的 ACK，冲突结果保留并告警。
       acknowledgements: receipts,
       // 点名名单：仅在设备手上的修订过期时回带整份名单，避免每轮重复下发。

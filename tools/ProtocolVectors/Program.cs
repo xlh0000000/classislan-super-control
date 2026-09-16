@@ -59,6 +59,49 @@ Add("poll-request-with-ack-results", "poll",
         },
         new Dictionary<string, string> { ["theme"] = "applied", ["weather"] = "failed" }));
 
+// 课表上传（贡献者：威廉）：摘要 + 全量快照，以及仅摘要两种形态。
+var timetable = JsonSerializer.SerializeToElement(new
+{
+    name = "高一（3）班",
+    timeLayouts = new Dictionary<string, object>
+    {
+        ["b3f4c5d6-4a5b-4c6d-8e7f-0a1b2c3d4e5f"] = new
+        {
+            name = "夏秋季作息",
+            layouts = new[] { new { startTime = "08:00", endTime = "08:45" } },
+        },
+    },
+    classPlans = new Dictionary<string, object>
+    {
+        ["a1b2c3d4-1a2b-3c4d-8e6f-7a8b9c0d1e2f"] = new
+        {
+            name = "周一",
+            timeLayoutId = "b3f4c5d6-4a5b-4c6d-8e7f-0a1b2c3d4e5f",
+            classes = new[] { new { subjectId = "11111111-2222-3333-8444-555555555555" } },
+        },
+    },
+    subjects = new Dictionary<string, object>
+    {
+        ["11111111-2222-3333-8444-555555555555"] = new { name = "语文" },
+        ["66666666-7777-8888-9999-aaaaaaaaaaaa"] = new { name = "数学" },
+    },
+    classPlanGroups = new Dictionary<string, object>
+    {
+        ["9a8b7c6d-5e4f-4a3b-8c2d-1e0f1a2b3c4d"] = new { name = "默认", isGlobal = false },
+    },
+    selectedClassPlanGroupId = "9a8b7c6d-5e4f-4a3b-8c2d-1e0f1a2b3c4d",
+}, ProtocolJson.Options);
+
+Add("poll-request-with-timetable", "poll",
+    new PollRequest(deviceId, 4, "2026-09-11T00:00:15.000Z", "0.1.0", "2.1.1.1", "Windows/x64",
+        "3f2a1c9d", null, 3, 7, "abc123", 0, Array.Empty<CommandResult>(), null,
+        0, "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d", timetable));
+
+Add("poll-request-timetable-digest-only", "poll",
+    new PollRequest(deviceId, 5, "2026-09-11T00:00:20.000Z", "0.1.0", "2.1.1.1", "Windows/x64",
+        "3f2a1c9d", null, 3, 7, "abc123", 0, Array.Empty<CommandResult>(), null,
+        0, "5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f"));
+
 var json = JsonSerializer.Serialize(new ContractFile("protocol-v1", vectors),
     new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping }) + "\n";
 

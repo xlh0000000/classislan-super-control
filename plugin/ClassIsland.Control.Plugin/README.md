@@ -5,8 +5,8 @@
 **ClassIsland Control 的设备端插件**
 
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![ClassIsland](https://img.shields.io/badge/ClassIsland-2.1.1.1-2563eb)
-![Plugin SDK](https://img.shields.io/badge/Plugin%20SDK-2.1.1.1-2563eb)
+![ClassIsland](https://img.shields.io/badge/ClassIsland-2.1.0.1-2563eb)
+![Plugin SDK](https://img.shields.io/badge/Plugin%20SDK-2.1.0.1-2563eb)
 
 </div>
 

@@ -1,5 +1,7 @@
 namespace ClassIsland.Control.Plugin.Services;
 
+// 贡献者：威廉（课表上传状态）
+
 /// <summary>设备端连接状态：供设置页展示是否已加入集控。所有成员线程安全。</summary>
 public sealed class AgentStatus
 {
@@ -14,6 +16,7 @@ public sealed class AgentStatus
     private Dictionary<string, string> _appliedSections = [];
     private IReadOnlyList<string> _lockSummary = [];
     private string _timeOffsetSummary = "";
+    private string _timetableSummary = "";
     private bool _syncing;
     private bool _locked;
 
@@ -35,6 +38,8 @@ public sealed class AgentStatus
     public IReadOnlyList<string> LockSummary { get { lock (_gate) return _lockSummary.ToArray(); } }
     /// <summary>集控端下发的时间偏移说明；空串表示未接管本机时间偏移。</summary>
     public string TimeOffsetSummary { get { lock (_gate) return _timeOffsetSummary; } }
+    /// <summary>课表上传状态说明；空串表示课表上传未开启或宿主不可用。</summary>
+    public string TimetableSummary { get { lock (_gate) return _timetableSummary; } }
     public long PolicyEpoch { get { lock (_gate) return _policyEpoch; } }
     public IReadOnlyDictionary<string, string> AppliedSections { get { lock (_gate) return new Dictionary<string, string>(_appliedSections); } }
 
@@ -64,6 +69,7 @@ public sealed class AgentStatus
             _appliedSections = [];
             _lockSummary = [];
             _timeOffsetSummary = "";
+            _timetableSummary = "";
             _policyError = "";
             _lastError = "";
             _note = "集控端已解除接入，可重新配置";
@@ -94,6 +100,13 @@ public sealed class AgentStatus
     public void TimeOffsetApplied(string summary)
     {
         lock (_gate) _timeOffsetSummary = summary;
+        Changed?.Invoke();
+    }
+
+    /// <summary>记录课表上传状态（已上传内容概览或降级原因）。</summary>
+    public void TimetableUpdated(string summary)
+    {
+        lock (_gate) _timetableSummary = summary;
         Changed?.Invoke();
     }
 

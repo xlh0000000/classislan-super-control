@@ -7,6 +7,7 @@ using System.Text.Json.Nodes;
 
 namespace ClassIsland.Control.Plugin.Services;
 
+// 贡献者：威廉（WebSocket 传输下沉到 WebSocketSession 常驻会话）
 
 /// <summary>
 /// 服务端拒绝设备请求序列（409）并附带其权威序列。
@@ -32,17 +33,12 @@ public sealed record PollResult(
 /// <summary>
 /// 集控端客户端。HTTP 轮询与 WebSocket 长连接共用同一份签名信封、同一份响应校验，
 /// 只是承载连接不同；因此两种传输的序列、重放、命令与策略语义完全一致。
+/// 长连接的建立、心跳与接收循环由 <see cref="WebSocketSession"/> 负责，本类型只管签名与校验。
 /// </summary>
-public sealed class ControlPlaneClient(HttpClient httpClient, PluginSettingsStore store)
+public sealed class ControlPlaneClient(HttpClient httpClient, PluginSettingsStore store, WebSocketSession session)
 {
     private static readonly JsonSerializerOptions JsonOptions = ProtocolJson.Options;
     private const string PollPath = "/api/v1/agent/poll";
-    private const string WebSocketPath = "/api/v1/agent/ws";
-    private const int MaxWebSocketResponseBytes = 512 * 1024;
-    private static readonly TimeSpan PollTimeout = TimeSpan.FromSeconds(45);
-
-    private readonly SemaphoreSlim _socketGate = new(1, 1);
-    private ClientWebSocket? _socket;
 
     public async Task<EnrollmentResponse> EnrollAsync(EnrollmentRequest request, CancellationToken cancellationToken)
     {
@@ -76,42 +72,22 @@ public sealed class ControlPlaneClient(HttpClient httpClient, PluginSettingsStor
     }
 
     /// <summary>
-    /// 在常驻长连接上提交一次轮询。连接断开或服务端拒绝时立即释放连接，
-    /// 下一次调用重新建立，避免复用已关闭的套接字。
+    /// 在常驻长连接上提交一次轮询。连接由 <see cref="WebSocketSession"/> 常驻并自动重连，
+    /// 本方法只负责签名、封装 poll 消息与校验服务端回复。
     /// </summary>
     public async Task<PollResult> PollOverWebSocketAsync(PollRequest requestBody, CancellationToken cancellationToken)
     {
         var signed = SignPoll(requestBody);
-        await _socketGate.WaitAsync(cancellationToken);
-        try
-        {
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(PollTimeout);
-            var socket = await EnsureSocketAsync(timeout.Token);
-            using var envelope = JsonDocument.Parse(signed.BodyJson);
-            var payload = JsonSerializer.SerializeToUtf8Bytes(
-                new WebSocketPollMessage("poll", envelope.RootElement.Clone()), JsonOptions);
-            var startedAt = DateTime.UtcNow;
-            await socket.SendAsync(payload, WebSocketMessageType.Text, true, timeout.Token);
-            var reply = await ReceiveTextAsync(socket, timeout.Token);
-            return ReadWebSocketReply(reply, DateTime.UtcNow - startedAt);
-        }
-        catch
-        {
-            // 任何失败都不保留连接状态：下一次轮询重新握手并重新校验服务端身份。
-            await ResetSocketAsync();
-            throw;
-        }
-        finally { _socketGate.Release(); }
+        using var envelope = JsonDocument.Parse(signed.BodyJson);
+        var payload = JsonSerializer.SerializeToUtf8Bytes(
+            new WebSocketPollMessage("poll", envelope.RootElement.Clone()), JsonOptions);
+        var startedAt = DateTime.UtcNow;
+        var reply = await session.PollAsync(payload, cancellationToken);
+        return ReadWebSocketReply(reply, DateTime.UtcNow - startedAt);
     }
 
-    /// <summary>断开并丢弃长连接，供轮询循环在传输方式切换或退出时调用。</summary>
-    public async Task CloseWebSocketAsync()
-    {
-        await _socketGate.WaitAsync();
-        try { await ResetSocketAsync(); }
-        finally { _socketGate.Release(); }
-    }
+    /// <summary>关闭并丢弃常驻长连接，供轮询循环在传输方式切换或退出时调用。</summary>
+    public async Task CloseWebSocketAsync() => await session.CloseAsync();
 
     private PollResult ReadWebSocketReply(string reply, TimeSpan roundTrip)
     {
@@ -152,62 +128,6 @@ public sealed class ControlPlaneClient(HttpClient httpClient, PluginSettingsStor
         var parsed = JsonSerializer.Deserialize<PollResponse>(body, JsonOptions)
             ?? throw new InvalidOperationException("Poll response was empty.");
         return new PollResult(parsed, body, verified.KeyId, verified.Signature, roundTrip);
-    }
-
-    private async Task<ClientWebSocket> EnsureSocketAsync(CancellationToken cancellationToken)
-    {
-        if (_socket is { State: WebSocketState.Open } open) return open;
-        await ResetSocketAsync();
-        var httpUri = new Uri(ResolveServerUri(), WebSocketPath);
-        var builder = new UriBuilder(httpUri)
-        {
-            Scheme = httpUri.Scheme == Uri.UriSchemeHttps ? "wss" : "ws",
-        };
-        var socket = new ClientWebSocket();
-        try
-        {
-            await socket.ConnectAsync(builder.Uri, cancellationToken);
-        }
-        catch
-        {
-            socket.Dispose();
-            throw;
-        }
-        _socket = socket;
-        return socket;
-    }
-
-    private async Task ResetSocketAsync()
-    {
-        var socket = _socket;
-        _socket = null;
-        if (socket is null) return;
-        try
-        {
-            if (socket.State is WebSocketState.Open or WebSocketState.CloseReceived)
-                await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "reconnect", CancellationToken.None);
-        }
-        catch (Exception) { /* 关闭失败同样只需丢弃连接。 */ }
-        socket.Dispose();
-    }
-
-    private static async Task<string> ReceiveTextAsync(ClientWebSocket socket, CancellationToken cancellationToken)
-    {
-        var buffer = new byte[16 * 1024];
-        using var payload = new MemoryStream();
-        while (true)
-        {
-            var result = await socket.ReceiveAsync(buffer, cancellationToken);
-            if (result.MessageType == WebSocketMessageType.Close)
-                throw new HttpRequestException("长连接已被服务端关闭。");
-            if (result.MessageType != WebSocketMessageType.Text)
-                throw new HttpRequestException("长连接返回了非文本消息。");
-            payload.Write(buffer, 0, result.Count);
-            if (payload.Length > MaxWebSocketResponseBytes)
-                throw new HttpRequestException("长连接响应超过大小限制。");
-            if (result.EndOfMessage) break;
-        }
-        return Encoding.UTF8.GetString(payload.ToArray());
     }
 
     /// <summary>
@@ -251,9 +171,8 @@ public sealed class ControlPlaneClient(HttpClient httpClient, PluginSettingsStor
 
     private Uri ResolveServerUri()
     {
-        var baseUri = new Uri(store.Settings.ServerUrl, UriKind.Absolute);
-        if (baseUri.Scheme != Uri.UriSchemeHttps && baseUri.Host is not ("localhost" or "127.0.0.1")) throw new InvalidOperationException("Public control planes must use HTTPS.");
-        return baseUri;
+        // 兼容 http(s) 部署：直接使用集控地址，不再强制非本机必须 https。
+        return new Uri(store.Settings.ServerUrl, UriKind.Absolute);
     }
 
     private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string path, string bodyJson, CancellationToken cancellationToken, SignedHeaders? signed)

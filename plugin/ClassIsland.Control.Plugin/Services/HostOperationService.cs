@@ -26,7 +26,8 @@ public sealed class HostOperationService(
     IServiceProvider services,
     PluginSettingsStore store,
     SettingsPolicyService settingsPolicy,
-    TimeOffsetService timeOffset)
+    TimeOffsetService timeOffset,
+    TimetableSnapshotService timetableSnapshot)
 {
     public const int SupportedSchemaVersion = 1;
 
@@ -67,6 +68,7 @@ public sealed class HostOperationService(
                 "time.offset.persist.v1" => TimeOffsetCommand(command),
                 "enrollment.lock.v1" => await ReconcileEnrollmentLock(command),
                 "settings.policy.persist.v1" => SettingsPolicy(command),
+                "timetable.upload.v1" => TimetableUpload(command),
                 _ => new(command.CommandId, "unsupported", new { command.CapabilityId }),
             };
         }
@@ -329,6 +331,26 @@ public sealed class HostOperationService(
             return new(command.CommandId, "unsupported", new { error = "host-policy-unavailable" });
         var applied = settingsPolicy.Apply(command.Payload);
         return new(command.CommandId, "succeeded", new { applied });
+    }
+
+    /// <summary>
+    /// 课表上报（贡献者：威廉）：课表上传本质是客户端主动上报，本分支供集控端主动催收——
+    /// 下发 report-now 命令强制下一次轮询携带全量课表快照，并回读当前摘要与各类计数用于对账。
+    /// </summary>
+    private CommandResult TimetableUpload(RemoteCommand command)
+    {
+        var action = command.Payload.TryGetProperty("action", out var value) ? value.GetString() : null;
+        if (action != "report-now")
+            throw new InvalidOperationException("Unsupported timetable action.");
+        timetableSnapshot.ForceRetransmit();
+        return new(command.CommandId, "succeeded", new
+        {
+            digest = timetableSnapshot.Digest,
+            subjectsCount = timetableSnapshot.SubjectsCount,
+            timeLayoutsCount = timetableSnapshot.TimeLayoutsCount,
+            classPlansCount = timetableSnapshot.ClassPlansCount,
+            classPlanGroupsCount = timetableSnapshot.ClassPlanGroupsCount,
+        });
     }
 
     private static void ReplaceContents<TKey, TValue>(IDictionary<TKey, TValue> target, IDictionary<TKey, TValue> source) where TKey : notnull

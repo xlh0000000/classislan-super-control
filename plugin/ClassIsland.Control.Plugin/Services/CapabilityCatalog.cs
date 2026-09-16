@@ -6,6 +6,8 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace ClassIsland.Control.Plugin.Services;
 
+// 贡献者：威廉（timetable.upload.v1 能力声明）
+
 public sealed class CapabilityCatalog(IServiceProvider services, TimeOffsetService timeOffset)
 {
     public IReadOnlyList<CapabilityDescriptor> Detect()
@@ -20,6 +22,8 @@ public sealed class CapabilityCatalog(IServiceProvider services, TimeOffsetServi
         };
         AddIf<IManagementService>("settings.policy.persist.v1", "persist");
         AddIf<IProfileService>("profile.readwrite.persist.v1", "persist");
+        // 课表上传：读取本机档案生成快照上报；IProfileService 不可用时自动不声明。
+        AddIf<IProfileService>("timetable.upload.v1", "read");
         AddIf<ILessonsService>("lessons.state.read.v1", "read");
         AddIf<IComponentsService>("components.layout.persist.v1", "persist");
         AddIf<IAutomationService>("automation.workflow.persist.v1", "persist");

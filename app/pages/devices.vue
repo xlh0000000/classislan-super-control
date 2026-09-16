@@ -1,11 +1,21 @@
 <script setup lang="ts">
 type DeviceRow = { id: string; name: string; pluginVersion: string; appVersion: string; transport: string; lastSeen: string | null; disabledAt: string | null; orgName: string; online: boolean; disabled: boolean };
+type TimetableSnapshot = {
+  name?: string;
+  selectedClassPlanGroupId?: string;
+  classPlanGroups?: Record<string, { name?: string; isGlobal?: boolean; classPlanIds?: string[] }>;
+  classPlans?: Record<string, { name?: string; timeLayoutId?: string; classes?: { subjectId?: string; startTime?: string; endTime?: string }[] }>;
+  timeLayouts?: Record<string, { name?: string; layouts?: { startTime?: string; endTime?: string }[] }>;
+  subjects?: Record<string, { name?: string; color?: string }>;
+};
 type DeviceDetail = {
   id: string; name: string; orgNodeId: string | null; pluginVersion: string; appVersion: string; platform: string; transport: string;
   capabilityDigest: string; policyRevision: number; driftCount: number; lastSequence: number;
   lastSeenAt: string | null; createdAt: string | null; disabledAt: string | null; online: boolean;
   policyStatus?: { desired: { revision: number; epoch: number; hash: string; sections: string[]; lockedPointers: number }; applied: { revision: number; epoch: number; hash: string; sections: unknown; driftCount: number }; inSync: boolean };
   capabilitySnapshot: unknown; tagIds: string[]; recentCommands: { id: string; capabilityId: string; state: string; attemptCount: number; createdAt: string }[];
+  timetable?: TimetableSnapshot | null;
+  timetableStatus?: { digest: string; uploadedAt: string; subjectsCount: number; timeLayoutsCount: number; classPlansCount: number; classPlanGroupsCount: number } | null;
 };
 const { data: devices, refresh } = await useFetch<DeviceRow[]>("/api/v1/admin/devices", { default: () => [] });
 const selected = ref<DeviceDetail | null>(null);
@@ -104,6 +114,50 @@ function capabilityEntries() {
   });
 }
 
+/** 课表档案（贡献者：威廉）：按档案内"当前选中课表群"展开为 课表群 → 课表 → 课程。 */
+function timetableEntries() {
+  const timetable = selected.value?.timetable;
+  if (!timetable) return [];
+  const groups = timetable.classPlanGroups ?? {};
+  const plans = timetable.classPlans ?? {};
+  const subjects = timetable.subjects ?? {};
+  const layouts = timetable.timeLayouts ?? {};
+  const selectedGroupId = timetable.selectedClassPlanGroupId;
+  const groupIds = selectedGroupId && groups[selectedGroupId] ? [selectedGroupId] : Object.keys(groups);
+  return groupIds.map((groupId) => {
+    const group = groups[groupId]!;
+    const planIds = group.classPlanIds?.length ? group.classPlanIds : Object.keys(plans);
+    return {
+      id: groupId,
+      name: group.name || "未命名课表群",
+      isGlobal: group.isGlobal,
+      isSelected: groupId === selectedGroupId,
+      plans: planIds
+        .map((planId) => plans[planId])
+        .filter((plan): plan is NonNullable<typeof plan> => !!plan)
+        .map((plan) => ({
+          id: plan.timeLayoutId || "",
+          name: plan.name || "未命名课表",
+          layoutName: plan.timeLayoutId ? layouts[plan.timeLayoutId]?.name : "",
+          classes: (plan.classes ?? [])
+            .map((lesson) => ({
+              subject: lesson.subjectId ? subjects[lesson.subjectId]?.name || "未知科目" : "自修",
+              startTime: lesson.startTime ?? "",
+              endTime: lesson.endTime ?? "",
+            }))
+            .filter((lesson) => lesson.subject || lesson.startTime || lesson.endTime),
+        })),
+    };
+  });
+}
+
+/** 上传状态行：摘要前 12 位 + 各类计数。 */
+function timetableSummary() {
+  const status = selected.value?.timetableStatus;
+  if (!status) return "";
+  return `${status.subjectsCount} 科目 · ${status.timeLayoutsCount} 时间表 · ${status.classPlansCount} 课表 · ${status.classPlanGroupsCount} 课表群`;
+}
+
 async function open(device: DeviceRow) {
   loading.value = true;
   try {
@@ -177,6 +231,21 @@ async function runRemoveDevice() {
     selected.value = null; toast.ok("已删除设备。"); await refresh();
   } catch (err) { toast.err((err as { data?: { message?: string } })?.data?.message ?? "删除失败。"); }
 }
+
+/** 采纳为配置（贡献者：威廉）：把设备课表档案写入配置库（kind=profile），可经策略引用下发给其他设备。 */
+const adopting = ref(false);
+async function adoptTimetable() {
+  const device = selected.value;
+  if (!device || adopting.value) return;
+  adopting.value = true;
+  try {
+    const result = await $fetch<{ configurationId: string; revision: number; name: string }>(`/api/v1/admin/devices/${device.id}/adopt-timetable`, {
+      method: "POST", headers: { origin: location.origin },
+    });
+    toast.ok(`已采纳为配置「${result.name}」（R${result.revision}）。`);
+  } catch (err) { toast.err((err as { data?: { message?: string } })?.data?.message ?? "采纳失败。"); }
+  finally { adopting.value = false; }
+}
 </script>
 
 <template>
@@ -219,6 +288,29 @@ async function runRemoveDevice() {
       </div>
       <p class="muted">长连接省去每次轮询的握手；改动在设备下次同步后生效。</p>
     </article>
+    <article class="block timetable-block"><h3>课表档案</h3>
+      <template v-if="selected.timetable">
+        <div class="timetable-toolbar">
+          <span class="timetable-summary">{{ timetableSummary() }}<template v-if="selected.timetableStatus"> · 摘要 {{ selected.timetableStatus.digest.slice(0, 12) }}…</template></span>
+          <button type="button" :disabled="adopting" @click="adoptTimetable">采纳为配置</button>
+        </div>
+        <p class="muted">档案名「{{ selected.timetable.name || "未命名" }}」，上传于 {{ selected.timetableStatus?.uploadedAt || "—" }}。采纳后可在策略中引用下发给其他设备。</p>
+        <div v-for="group in timetableEntries()" :key="group.id" class="timetable-group">
+          <h4>{{ group.name }}<template v-if="group.isSelected"> · 当前选中</template><small v-if="group.isGlobal"> · 全局</small></h4>
+          <div v-if="group.plans.length" class="timetable-plans">
+            <div v-for="plan in group.plans" :key="plan.id" class="timetable-plan">
+              <h5>{{ plan.name }}<small v-if="plan.layoutName"> · {{ plan.layoutName }}</small></h5>
+              <ul v-if="plan.classes.length" class="lessons">
+                <li v-for="(lesson, index) in plan.classes" :key="index"><span class="lesson-index">{{ index + 1 }}</span><strong>{{ lesson.subject }}</strong><span v-if="lesson.startTime">{{ lesson.startTime }}–{{ lesson.endTime || "?" }}</span></li>
+              </ul>
+              <p v-else class="muted">空课表</p>
+            </div>
+          </div>
+          <p v-else class="muted">该课表群尚未编排课表。</p>
+        </div>
+      </template>
+      <p v-else class="muted">设备尚未上传课表档案。请确认插件端已开启课表上传，并在设备下一次同步后刷新查看。</p>
+    </article>
     <article class="block"><h3>能力快照</h3><ul v-if="capabilityEntries().length" class="caps"><li v-for="entry in capabilityEntries()" :key="entry.key"><code>{{ entry.key }}</code><span>{{ entry.value }}</span></li></ul><p v-else class="muted">设备尚未上报能力快照。</p></article>
     <article class="block"><h3>最近命令</h3><ul v-if="selected.recentCommands.length" class="caps"><li v-for="command in selected.recentCommands" :key="command.id"><code>{{ command.capabilityId }}</code><span>{{ command.state }} · 尝试 {{ command.attemptCount }} · {{ command.createdAt }}</span></li></ul><p v-else class="muted">尚无下发命令记录。</p></article>
   </AppDialog>
@@ -237,5 +329,5 @@ async function runRemoveDevice() {
 <style scoped>
 
 .table-shell{margin-top:14px;overflow:auto;border-radius:var(--radius-md);background:var(--surface-1)}table{width:100%;border-collapse:collapse}th,td{padding:18px 20px;text-align:left}th{color:var(--ink-muted);font-size:9px;letter-spacing:.08em}td{font-size:12px}tbody tr{background:var(--surface-1)}tbody tr:nth-child(odd){background:var(--surface-2)}tbody tr.selected{outline:2px solid var(--ink)}td:first-child{display:grid;gap:3px}td small{color:var(--ink-muted)}.state{display:inline-flex;align-items:center;gap:7px}.state::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--ink-muted)}.state[data-online="true"]::before{background:var(--good)}.state[data-disabled="true"]::before{background:var(--bad)}.row-actions{text-align:right}.row-actions button,.rename button,.actions button,.detail header button{min-height:44px;padding:0 16px;border:0;border-radius:14px;background:var(--surface-2);color:var(--ink);cursor:pointer}.rename button,.actions button:not(.danger){background:var(--ink);color:var(--canvas)}.actions button.danger{color:var(--bad)}button:disabled{opacity:.45;cursor:not-allowed}
-.bulk{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:14px;padding:16px 20px;border-radius:var(--radius-md);background:var(--surface-1)}.bulk div:first-child{display:grid;gap:4px}.bulk span{color:var(--ink-muted);font-size:9px;letter-spacing:.12em}.bulk strong{font-size:14px}.bulk small{color:var(--ink-muted);font-size:10px}.bulk-actions{display:flex;gap:8px}.bulk-actions button{min-height:44px;padding:0 16px;border:0;border-radius:14px;background:var(--surface-2);color:var(--ink);cursor:pointer}.bulk-actions button.danger{color:var(--bad)}.bulk-actions .pick{color:var(--ink-soft)}.detail{margin-top:16px;padding:24px;border-radius:var(--radius-md);background:var(--surface-1)}.detail header{display:flex;justify-content:space-between;align-items:start}.detail header span{color:var(--ink-muted);font-size:9px;letter-spacing:.12em}.detail h2{margin:7px 0 4px;font-size:22px}.detail header small{color:var(--ink-muted)}.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:18px}.detail-grid article,.block{padding:18px;border-radius:16px;background:var(--surface-2)}.detail h3{margin:0 0 12px;font-size:13px}dl{display:grid;grid-template-columns:auto 1fr;gap:8px 16px;margin:0}dt{color:var(--ink-muted);font-size:10px}dd{margin:0;font-size:12px}.rename{display:flex;align-items:end;gap:12px;margin-top:14px}.rename label{display:grid;gap:7px;flex:1;font-size:10px;color:var(--ink-soft)}.rename input{min-height:44px;padding:0 14px;border:0;border-radius:14px;background:var(--surface-2);color:var(--ink)}.actions{display:flex;gap:10px;margin-top:14px}.block{margin-top:14px}.caps{display:grid;gap:6px;margin:0;padding:0;list-style:none}.caps li{display:flex;justify-content:space-between;gap:14px;padding:10px 14px;border-radius:12px;background:var(--surface-1);font-size:11px}.caps code{font-family:ui-monospace,monospace}.caps span{color:var(--ink-soft)}@media(max-width:780px){.detail-grid{grid-template-columns:1fr}.rename{flex-direction:column;align-items:stretch}}
+.bulk{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:14px;padding:16px 20px;border-radius:var(--radius-md);background:var(--surface-1)}.bulk div:first-child{display:grid;gap:4px}.bulk span{color:var(--ink-muted);font-size:9px;letter-spacing:.12em}.bulk strong{font-size:14px}.bulk small{color:var(--ink-muted);font-size:10px}.bulk-actions{display:flex;gap:8px}.bulk-actions button{min-height:44px;padding:0 16px;border:0;border-radius:14px;background:var(--surface-2);color:var(--ink);cursor:pointer}.bulk-actions button.danger{color:var(--bad)}.bulk-actions .pick{color:var(--ink-soft)}.detail{margin-top:16px;padding:24px;border-radius:var(--radius-md);background:var(--surface-1)}.detail header{display:flex;justify-content:space-between;align-items:start}.detail header span{color:var(--ink-muted);font-size:9px;letter-spacing:.12em}.detail h2{margin:7px 0 4px;font-size:22px}.detail header small{color:var(--ink-muted)}.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:18px}.detail-grid article,.block{padding:18px;border-radius:16px;background:var(--surface-2)}.detail h3{margin:0 0 12px;font-size:13px}dl{display:grid;grid-template-columns:auto 1fr;gap:8px 16px;margin:0}dt{color:var(--ink-muted);font-size:10px}dd{margin:0;font-size:12px}.rename{display:flex;align-items:end;gap:12px;margin-top:14px}.rename label{display:grid;gap:7px;flex:1;font-size:10px;color:var(--ink-soft)}.rename input{min-height:44px;padding:0 14px;border:0;border-radius:14px;background:var(--surface-2);color:var(--ink)}.actions{display:flex;gap:10px;margin-top:14px}.timetable-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px}.timetable-toolbar button{min-height:38px;padding:0 14px;border:0;border-radius:12px;background:var(--ink);color:var(--canvas);cursor:pointer}.timetable-summary{color:var(--ink-soft);font-size:11px}.timetable-group{margin-top:12px}.timetable-group h4{margin:0 0 8px;font-size:12px}.timetable-group h4 small{color:var(--ink-muted)}.timetable-plans{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}.timetable-plan{padding:12px 14px;border-radius:12px;background:var(--surface-1)}.timetable-plan h5{margin:0 0 8px;font-size:12px}.timetable-plan h5 small{color:var(--ink-muted)}.lessons{display:grid;gap:4px;margin:0;padding:0;list-style:none}.lessons li{display:flex;align-items:center;gap:8px;font-size:11px}.lesson-index{width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;background:var(--surface-2);color:var(--ink-muted);font-size:9px}.lessons li strong{font-weight:500}.lessons li span:last-child{margin-left:auto;color:var(--ink-soft)}.block{margin-top:14px}.caps{display:grid;gap:6px;margin:0;padding:0;list-style:none}.caps li{display:flex;justify-content:space-between;gap:14px;padding:10px 14px;border-radius:12px;background:var(--surface-1);font-size:11px}.caps code{font-family:ui-monospace,monospace}.caps span{color:var(--ink-soft)}@media(max-width:780px){.detail-grid{grid-template-columns:1fr}.rename{flex-direction:column;align-items:stretch}}
 </style>

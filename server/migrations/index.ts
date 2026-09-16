@@ -1,6 +1,8 @@
 import type Database from "better-sqlite3";
 import { createHash } from "node:crypto";
 
+// 贡献者：威廉（0015-device-timetables 设备课表档案迁移）
+
 export type Migration = { id: string; up: (db: Database.Database) => void };
 
 function addColumn(db: Database.Database, table: string, name: string, definition: string) {
@@ -453,7 +455,25 @@ const rollCallRoster: Migration = {
   },
 };
 
-export const migrations: Migration[] = [baseline, taskOrchestration, enrollmentIdempotency, orgScopeRbac, policyEpochAndCas, taskPauseAndCancel, deviceResponseReplay, sessionsTable, enrollmentTokenTags, taskIdempotencyScope, auditCheckpoints, buildingLayout, policyAppendMode, deviceTransport, rollCallRoster];
+const deviceTimetables: Migration = {
+  id: "0015-device-timetables",
+  up(db) {
+    // 设备上传的课表档案快照：device_id 主键，digest 为 JCS+SHA-256 摘要用于幂等去重，
+    // snapshot 为与 ClassIsland Profile 同构的 camelCase JSON，四类计数便于管理端概览。
+    db.exec(`CREATE TABLE IF NOT EXISTS device_timetables (
+      device_id TEXT PRIMARY KEY REFERENCES devices(id) ON DELETE CASCADE,
+      digest TEXT NOT NULL,
+      snapshot TEXT NOT NULL,
+      subjects_count INTEGER NOT NULL DEFAULT 0,
+      time_layouts_count INTEGER NOT NULL DEFAULT 0,
+      class_plans_count INTEGER NOT NULL DEFAULT 0,
+      class_plan_groups_count INTEGER NOT NULL DEFAULT 0,
+      uploaded_at TEXT NOT NULL
+    ) STRICT`);
+  },
+};
+
+export const migrations: Migration[] = [baseline, taskOrchestration, enrollmentIdempotency, orgScopeRbac, policyEpochAndCas, taskPauseAndCancel, deviceResponseReplay, sessionsTable, enrollmentTokenTags, taskIdempotencyScope, auditCheckpoints, buildingLayout, policyAppendMode, deviceTransport, rollCallRoster, deviceTimetables];
 
 /** 对除 schema_migrations 外的全部 schema 对象做稳定指纹，用于校验迁移记录与真实 schema 是否一致。 */
 export function schemaFingerprint(db: Database.Database) {

@@ -4,6 +4,8 @@ using System.Text.Json.Serialization;
 
 namespace ClassIsland.Control.Plugin.Services;
 
+// 贡献者：威廉（课表上传 timetableDigest/timetable/timetableRequired 字段）
+
 /// <summary>
 /// 控制平面线上协议 DTO 的唯一来源。tools/ProtocolVectors 直接编译本文件，
 /// 用真实的 System.Text.Json 输出生成 C#→TypeScript 字节契约向量；
@@ -28,8 +30,8 @@ public sealed record CommandResult(string CommandId, string State, [property: Js
 
 public sealed record EnrollmentRequest(string Token, string Name, Dictionary<string, object> PublicKeyJwk, string? KeyThumbprint, string PluginVersion, string AppVersion, string Platform);
 public sealed record EnrollmentResponse(string DeviceId, int PollIntervalSeconds, DateTime ServerTimeUtc, string ServerSigningPublicKey, string ServerSigningKeyId);
-public sealed record PollRequest(string DeviceId, long Sequence, string TimestampUtc, string PluginVersion, string AppVersion, string Platform, string CapabilityDigest, IReadOnlyList<CapabilityDescriptor>? Capabilities, long PolicyRevision, long PolicyEpoch, string PolicyHash, int DriftCount, IReadOnlyList<CommandResult> Acknowledgements, IReadOnlyDictionary<string, string>? AppliedSections, long RollCallRevision = 0);
-public sealed record PollResponse(DateTime ServerTimeUtc, int NextPollSeconds, string? Transport, RemotePolicy? Policy, List<RemoteCommandEnvelope> Commands, List<AckReceipt>? Acknowledgements = null, RemoteRollCall? RollCall = null);
+public sealed record PollRequest(string DeviceId, long Sequence, string TimestampUtc, string PluginVersion, string AppVersion, string Platform, string CapabilityDigest, IReadOnlyList<CapabilityDescriptor>? Capabilities, long PolicyRevision, long PolicyEpoch, string PolicyHash, int DriftCount, IReadOnlyList<CommandResult> Acknowledgements, IReadOnlyDictionary<string, string>? AppliedSections, long RollCallRevision = 0, string? TimetableDigest = null, JsonElement? Timetable = null);
+public sealed record PollResponse(DateTime ServerTimeUtc, int NextPollSeconds, string? Transport, RemotePolicy? Policy, List<RemoteCommandEnvelope> Commands, List<AckReceipt>? Acknowledgements = null, RemoteRollCall? RollCall = null, bool TimetableRequired = false);
 /// <summary>WebSocket 传输的消息封装；信封与响应正文与 HTTP 轮询逐字节同源。</summary>
 public sealed record WebSocketPollMessage(string Type, JsonElement Envelope);
 public sealed record WebSocketPollResult(string Type, string KeyId, string Signature, string Body);

@@ -77,11 +77,25 @@
         </controls:FASettingsExpanderItem>
       </StackPanel>
 
+      <StackPanel Classes="cardContainer">
+        <controls:FASettingsExpanderItem Content="课表上传" Description="自动采集本机课表档案（课表、时间表、科目、课表群）并上报到集控端，本机改动会自动重传。">
+          <controls:FASettingsExpanderItem.Footer>
+            <ToggleSwitch x:Name="TimetableUploadSwitch" OnContent="已开启" OffContent="已关闭"/>
+          </controls:FASettingsExpanderItem.Footer>
+        </controls:FASettingsExpanderItem>
+        <controls:FASettingsExpanderItem Content="上传状态">
+          <controls:FASettingsExpanderItem.Footer>
+            <TextBlock x:Name="TimetableStatusText" VerticalAlignment="Center" TextAlignment="Right"
+                       MaxWidth="420" TextWrapping="Wrap" Text="尚未同步"/>
+          </controls:FASettingsExpanderItem.Footer>
+        </controls:FASettingsExpanderItem>
+      </StackPanel>
+
       <StackPanel Classes="cardContainer" x:Name="ConnectPanel">
-        <controls:FASettingsExpanderItem Content="服务器地址" Description="集控服务端地址；公网地址必须使用 HTTPS。">
+        <controls:FASettingsExpanderItem Content="服务器地址" Description="集控服务端地址，支持 http:// 与 https://。">
           <controls:FASettingsExpanderItem.Footer>
             <TextBox x:Name="ServerUrlBox" MinWidth="240" MaxWidth="320"
-                     PlaceholderText="https://control.example.edu"/>
+                     Watermark="https://control.example.edu"/>
           </controls:FASettingsExpanderItem.Footer>
         </controls:FASettingsExpanderItem>
         <controls:FASettingsExpanderItem Content="设备名称" Description="在集控端设备列表中显示的名称。">
@@ -92,7 +106,7 @@
         <controls:FASettingsExpanderItem Content="一次性接入码" Description="首次注册时填写；注册成功后由集控端管理。">
           <controls:FASettingsExpanderItem.Footer>
             <TextBox x:Name="EnrollmentTokenBox" PasswordChar="●" MinWidth="240" MaxWidth="320"
-                     PlaceholderText="首次注册填写"/>
+                     Watermark="首次注册填写"/>
           </controls:FASettingsExpanderItem.Footer>
         </controls:FASettingsExpanderItem>
         <controls:FASettingsExpanderItem Content="接入集控">

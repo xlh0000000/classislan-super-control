@@ -8,6 +8,8 @@ using Microsoft.Extensions.Hosting;
 
 namespace ClassIsland.Control.Plugin;
 
+// 贡献者：威廉（课表上传服务注册 / WebSocket 常驻会话注册）
+
 [PluginEntrance]
 public sealed class Plugin : PluginBase
 {
@@ -41,9 +43,12 @@ public sealed class Plugin : PluginBase
         services.AddSingleton<TimeOffsetService>();
         services.AddSingleton<AgentStatus>();
         services.AddSingleton<CapabilityCatalog>();
+        // 课表上传：采集本机档案快照；宿主未提供 IProfileService 时内部静默降级。
+        services.AddSingleton<TimetableSnapshotService>();
         services.AddSingleton<PolicyApplyService>();
         services.AddSingleton<HostOperationService>();
         services.AddSingleton(new HttpClient());
+        services.AddSingleton<WebSocketSession>();
         services.AddSingleton<ControlPlaneClient>();
         services.AddHostedService<PollingHostedService>();
         // 点名相关设置收进“点名”二级菜单，避免在设置导航里平铺一排页面。

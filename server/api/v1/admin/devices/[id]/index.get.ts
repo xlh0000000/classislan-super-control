@@ -1,6 +1,7 @@
 import { assertDeviceInScope } from "../../../../../utils/scope";
 import { materializeConfigReferences, resolvePolicyForDeviceFromDb } from "../../../../../utils/policy";
 import { canonicalJson, sha256 } from "../../../../../utils/security";
+import { readDeviceTimetable } from "../../../../../utils/device-timetable";
 
 export default defineEventHandler((event) => {
   const user = event.context.user as { id: string; role: string; scopeOrgNodeId?: string | null };
@@ -48,5 +49,32 @@ export default defineEventHandler((event) => {
     },
     inSync: (device.policyEpoch as number) === desired.epoch && appliedHash === desiredHash,
   };
-  return { ...device, online: device.online === 1, appliedPolicySections: appliedSections, capabilitySnapshot: capabilities, tagIds: tags.map((tag) => tag.tagId), recentCommands: recent, policyStatus };
+  // 课表档案（贡献者：威廉）：读取存档行，快照解析失败时回退为 null（界面显示"尚未上传"）。
+  const timetableRow = readDeviceTimetable(db, id);
+  let timetable: unknown = null;
+  if (timetableRow) {
+    try { timetable = JSON.parse(timetableRow.snapshot); } catch { timetable = null; }
+  }
+  const timetableStatus = timetableRow
+    ? {
+        digest: timetableRow.digest,
+        uploadedAt: timetableRow.uploadedAt,
+        subjectsCount: timetableRow.subjectsCount,
+        timeLayoutsCount: timetableRow.timeLayoutsCount,
+        classPlansCount: timetableRow.classPlansCount,
+        classPlanGroupsCount: timetableRow.classPlanGroupsCount,
+      }
+    : null;
+  return {
+    ...device,
+    online: device.online === 1,
+    appliedPolicySections: appliedSections,
+    capabilitySnapshot: capabilities,
+    tagIds: tags.map((tag) => tag.tagId),
+    recentCommands: recent,
+    policyStatus,
+    // 课表档案（贡献者：威廉）：设备经轮询上报的本地课表快照与存档状态。
+    timetable,
+    timetableStatus,
+  };
 });

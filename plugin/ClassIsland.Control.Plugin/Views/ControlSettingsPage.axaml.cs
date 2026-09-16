@@ -9,6 +9,8 @@ using ClassIsland.Shared;
 
 namespace ClassIsland.Control.Plugin.Views;
 
+// 贡献者：威廉（课表上传开关与状态、http(s) 放行）
+
 // 归入“关于”类别：策略锁定“应用设置”时本页仍需可达，否则设备状态与锁定项将无处查看。
 [SettingsPageInfo("classisland-control.connection", "ClassIsland 集控", "\uedc7", "\uedc6", SettingsPageCategory.About)]
 public partial class ControlSettingsPage : SettingsPageBase
@@ -20,6 +22,7 @@ public partial class ControlSettingsPage : SettingsPageBase
 
     private readonly PluginSettingsStore _store;
     private readonly AgentStatus _status;
+    private bool _loading;
 
     [Obsolete("Only used by the XAML loader.")]
     public ControlSettingsPage() : this(IAppHost.GetService<PluginSettingsStore>(), IAppHost.GetService<AgentStatus>())
@@ -33,6 +36,10 @@ public partial class ControlSettingsPage : SettingsPageBase
         InitializeComponent();
         ServerUrlBox.Text = store.Settings.ServerUrl;
         DeviceNameBox.Text = store.Settings.DeviceName;
+        _loading = true;
+        TimetableUploadSwitch.IsChecked = store.Settings.TimetableUploadEnabled;
+        _loading = false;
+        TimetableUploadSwitch.IsCheckedChanged += OnTimetableToggleChanged;
         RenderStatus();
     }
 
@@ -87,6 +94,20 @@ public partial class ControlSettingsPage : SettingsPageBase
         if (error.Length == 0 && _store.RecoveredFromSeal) error = "本地集控身份曾被清空，已按入网封条恢复接入。";
         ErrorBar.Message = error;
         ErrorBar.IsOpen = error.Length > 0;
+        TimetableStatusText.Text = !enrolled
+            ? "未加入集控"
+            : _status.TimetableSummary.Length > 0 ? _status.TimetableSummary : "尚未同步";
+    }
+
+    private async void OnTimetableToggleChanged(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (_loading) return;
+        try
+        {
+            await _store.SaveSettingsAsync(_store.Settings with { TimetableUploadEnabled = TimetableUploadSwitch.IsChecked == true });
+        }
+        catch { /* 保存失败不影响本次切换；下次改动会重试。 */ }
+        RenderStatus();
     }
 
     private (string Text, IBrush Brush) Describe()
@@ -119,9 +140,9 @@ public partial class ControlSettingsPage : SettingsPageBase
                 return;
             }
             if (!Uri.TryCreate(ServerUrlBox.Text, UriKind.Absolute, out var uri) ||
-                (uri.Scheme != Uri.UriSchemeHttps && uri.Host is not ("localhost" or "127.0.0.1")))
+                (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
             {
-                StatusText.Text = "地址无效，公网需 HTTPS";
+                StatusText.Text = "地址无效，请输入 http:// 或 https:// 开头的集控地址";
                 StatusDot.Fill = Critical;
                 return;
             }

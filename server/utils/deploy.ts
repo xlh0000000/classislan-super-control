@@ -3,6 +3,7 @@ import { configurationSection } from "../../shared/schemas";
 import { nowIso } from "./database";
 import { PolicyError, publishPolicy } from "./policy";
 import { appendAuditWithin } from "./security";
+import { pushToDevice } from "./device-ws-registry";
 import type { ScopeUser } from "./scope";
 
 /** 下发目标：全校、组织子树、标签或显式设备。 */
@@ -114,6 +115,11 @@ export function deployConfiguration(
         targets: targets.map(({ scopeType, scopeId, revision, deviceCount }) => ({ scopeType, scopeId, revision, deviceCount })),
       },
     });
+    // 实时广播（贡献者：威廉）：目标设备在线时立即收到 notify，马上同步新配置，不再等下一次轮询。
+    const nowIsoUtc = nowIso();
+    for (const deviceId of affected) {
+      pushToDevice(deviceId, { type: "notify", event: "configuration.deployed", serverTimeUtc: nowIsoUtc, detail: { configurationId: input.configurationId, section } });
+    }
     return { configurationId: input.configurationId, name: configuration.name, section, deviceCount: affected.size, targets };
   });
   return deploy();
