@@ -57,6 +57,8 @@ public sealed class PollingHostedService(
         await _appStarted.Task.WaitAsync(stoppingToken);
         // 课表上传：本机档案改动时提前醒来上报（不改变轮询本身的节奏）。
         timetable.Changed += OnTimetableChanged;
+        // 崩溃上报：报告一落盘就立刻醒来上报，不等下一个轮询周期。
+        crashReporter.Reported += OnCrashReported;
         // 实时模式：集控端主动推送（notify）或长连接断开时提前醒来上报。
         session.Notified += OnSessionWake;
         session.ConnectionLost += OnSessionWake;
@@ -67,6 +69,7 @@ public sealed class PollingHostedService(
         finally
         {
             timetable.Changed -= OnTimetableChanged;
+            crashReporter.Reported -= OnCrashReported;
             session.Notified -= OnSessionWake;
             session.ConnectionLost -= OnSessionWake;
         }
@@ -77,6 +80,8 @@ public sealed class PollingHostedService(
         _lastTimetableChangeUtc = DateTime.UtcNow;
         _changeWake.TrySetResult();
     }
+
+    private void OnCrashReported() => _changeWake.TrySetResult();
 
     private void OnSessionWake() => _notifyWake.TrySetResult();
 
@@ -400,6 +405,7 @@ public sealed class PollingHostedService(
     {
         AppBase.Current.AppStarted -= OnAppStarted;
         timetable.Changed -= OnTimetableChanged;
+        crashReporter.Reported -= OnCrashReported;
         session.Notified -= OnSessionWake;
         session.ConnectionLost -= OnSessionWake;
         await client.CloseWebSocketAsync();

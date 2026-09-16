@@ -40,6 +40,9 @@ public sealed class CrashReporter
         _outbox = Load();
     }
 
+    /// <summary>有新报告落盘时触发：轮询循环据此立刻上报，不等下一个定时。</summary>
+    public event Action? Reported;
+
     /// <summary>本机尚未被服务端确认的崩溃条数。</summary>
     public int PendingCount { get { lock (_gate) return _outbox.Count; } }
 
@@ -115,6 +118,8 @@ public sealed class CrashReporter
                 if (_outbox.Count > OutboxLimit) _outbox.RemoveRange(0, _outbox.Count - OutboxLimit);
                 PersistLocked();
             }
+            // 报告已落盘：立刻唤醒轮询，避免崩溃信息要等满一个轮询周期。
+            Reported?.Invoke();
         }
         catch (Exception error) { Trace(error); }
     }
