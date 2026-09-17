@@ -16,7 +16,7 @@ public sealed record PluginSettings
     /// <summary>课表上传：开启后自动采集本机档案并随连接上报到集控端。</summary>
     public bool TimetableUploadEnabled { get; init; } = true;
 
-    /// <summary>点名悬浮窗：是否常驻显示。名单本身由集控端下发，本机不可编辑。</summary>
+    /// <summary>点名悬浮窗：是否常驻显示。名单优先用集控端下发的，见 <see cref="RollCallLocalNames"/>。</summary>
     public bool RollCallEnabled { get; init; }
     /// <summary>悬浮窗宽度（逻辑像素）。</summary>
     public double RollCallWidth { get; init; } = 260;
@@ -25,11 +25,16 @@ public sealed record PluginSettings
     /// <summary>悬浮窗底色不透明度（0.2–1）。</summary>
     public double RollCallOpacity { get; init; } = 0.8;
     /// <summary>单人结果的显示秒数。</summary>
-    public int RollCallSingleSeconds { get; init; } = 3;
+    public int RollCallSingleSeconds { get; init; } = 6;
     /// <summary>多人结果的显示秒数（每人递增 1 秒）。</summary>
-    public int RollCallMultiSeconds { get; init; } = 6;
+    public int RollCallMultiSeconds { get; init; } = 10;
     /// <summary>抽中时是否同时拉起 ClassIsland 提醒。</summary>
     public bool RollCallNotify { get; init; } = true;
+    /// <summary>
+    /// 本机名字表：还没收到集控端名单时用它，没连集控也能点名。
+    /// 集控端一旦下发过名单就以那份为准，不让两边互相覆盖。
+    /// </summary>
+    public List<string> RollCallLocalNames { get; init; } = [];
     /// <summary>悬浮窗上次停靠位置；null 表示右下角默认位置。</summary>
     public double? RollCallX { get; init; }
     public double? RollCallY { get; init; }

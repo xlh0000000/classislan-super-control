@@ -1,11 +1,15 @@
+using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.VisualTree;
 using ClassIsland.Control.Plugin.Services;
 
 namespace ClassIsland.Control.Plugin.Views;
+
+// 贡献者：威廉（抽人悬浮窗：真毛玻璃浓度映射 + 多人菜单纯数字 + DWM 圆角裁剪）
 
 /// <summary>
 /// 常驻的点名悬浮窗：长方形、背景高斯模糊、整窗可拖（鼠标与 Windows 触摸同一套
@@ -17,9 +21,16 @@ public partial class RollCallWindow : Window
     private PixelPoint _originAtPress;
     private PixelPoint _pointerAtPress;
 
+    /// <summary>“多人”自绘按钮面的常态与悬停底色（亚克力恒为浅色，不跟随主题）。</summary>
+    private static readonly IBrush MultiFace = new SolidColorBrush(Color.Parse("#F2252820"));
+    private static readonly IBrush MultiFaceHover = new SolidColorBrush(Color.Parse("#F24B4A3B"));
+
     public RollCallWindow()
     {
         InitializeComponent();
+        // 面是自绘的，悬停反馈也自己给，避免主题在浅色亚克力上换出浅底色。
+        MultiButton.PointerEntered += (_, _) => MultiShell.Background = MultiFaceHover;
+        MultiButton.PointerExited += (_, _) => MultiShell.Background = MultiFace;
         AddHandler(PointerPressedEvent, OnPointerPressed, RoutingStrategies.Tunnel);
         AddHandler(PointerMovedEvent, OnPointerMoved, RoutingStrategies.Tunnel);
         AddHandler(PointerReleasedEvent, OnPointerReleased, RoutingStrategies.Tunnel);
@@ -34,6 +45,33 @@ public partial class RollCallWindow : Window
     /// <summary>拖动结束：回传逻辑坐标，供设置持久化。</summary>
     public event Action<double, double>? DragCompleted;
 
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
+    private const int DwmwaWindowCornerPreference = 33;
+
+    /// <summary>
+    /// Win11 起让 DWM 给无边框窗口裁圆角。亚克力铺满整窗，圆角由系统裁剪，
+    /// 卡片外才不会露出矩形的模糊底层；Win10 不支持该属性时保持方角并完全铺满。
+    /// </summary>
+    protected override void OnOpened(EventArgs e)
+    {
+        base.OnOpened(e);
+        if (TryGetPlatformHandle() is not { } handle) return;
+        var preference = 2; // DWMWCP_ROUND
+        var cornered = DwmSetWindowAttribute(handle.Handle, DwmwaWindowCornerPreference, ref preference, sizeof(int)) == 0;
+        Shell.CornerRadius = cornered ? new CornerRadius(8) : new CornerRadius(0);
+    }
+
+    /// <summary>结果展示期间禁用两个抽人按钮，结束后恢复；供 <see cref="RollCallService"/> 调用。</summary>
+    public void SetButtonsEnabled(bool enabled)
+    {
+        SingleButton.IsEnabled = enabled;
+        MultiButton.IsEnabled = enabled;
+        // 字色是显式指定的，不会跟随主题的禁用态变淡；用整体透明度表达禁用。
+        SingleButton.Opacity = enabled ? 1 : 0.55;
+        MultiButton.Opacity = enabled ? 1 : 0.55;
+    }
+
     /// <summary>悬浮窗被用户收起（关闭手势折算为隐藏）。</summary>
     public event Action? Dismissed;
 
@@ -46,12 +84,13 @@ public partial class RollCallWindow : Window
     {
         Width = Math.Clamp(settings.RollCallWidth, 180, 900);
         Height = Math.Clamp(settings.RollCallHeight, 84, 460);
-        // 磨砂浓度由亚克力材质决定：MaterialOpacity 是磨砂层自身，TintOpacity 是白色调。
+        // 真毛玻璃观感：设置值压缩到磨砂层 0.15–0.55、白色 tint 0.05–0.3，
+        // 背景内容透过模糊层而不是被白雾盖住；纯实底留给不支持亚克力的回退色。
         var opacity = Math.Clamp(settings.RollCallOpacity, 0.2, 1);
         if (Shell.Material is { } material)
         {
-            material.MaterialOpacity = opacity;
-            material.TintOpacity = Math.Clamp(opacity * 0.6, 0.15, 0.9);
+            material.MaterialOpacity = Math.Clamp(opacity * 0.55, 0.15, 0.55);
+            material.TintOpacity = Math.Clamp(opacity * 0.25, 0.05, 0.3);
         }
     }
 
@@ -88,13 +127,13 @@ public partial class RollCallWindow : Window
 
     private void SingleButton_OnClick(object? sender, RoutedEventArgs e) => SingleRequested?.Invoke();
 
-    /// <summary>“多人”不是输入框，而是 2–6 人的下拉选项。</summary>
+    /// <summary>“多人”不是输入框，而是 2–6 人的下拉选项（纯数字，不放多余文字）。</summary>
     private void MultiButton_OnClick(object? sender, RoutedEventArgs e)
     {
         var flyout = new MenuFlyout();
         for (var count = 2; count <= 6; count++)
         {
-            var item = new MenuItem { Header = $"{count} 人", Tag = count };
+            var item = new MenuItem { Header = $"{count}", Tag = count };
             var picked = count;
             item.Click += (_, _) => MultiRequested?.Invoke(picked);
             flyout.Items.Add(item);

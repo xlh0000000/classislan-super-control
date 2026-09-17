@@ -1,12 +1,12 @@
+using System.Runtime.InteropServices;
 using Avalonia;
-using Avalonia.Animation;
-using Avalonia.Animation.Easings;
 using Avalonia.Controls;
 using Avalonia.Media;
-using Avalonia.Styling;
 using Avalonia.Threading;
 
 namespace ClassIsland.Control.Plugin.Views;
+
+// 贡献者：威廉（点名结果窗：DWM 圆角裁剪 + 亚克力铺满整窗）
 
 /// <summary>
 /// 屏幕中央的名字框：显示抽中的姓名，到点淡出后自动关闭。
@@ -17,6 +17,10 @@ public partial class RollCallResultWindow : Window
     private readonly DispatcherTimer _timer = new();
     private bool _dismissing;
     private int _seconds = 3;
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
+    private const int DwmwaWindowCornerPreference = 33;
 
     public RollCallResultWindow()
     {
@@ -49,6 +53,13 @@ public partial class RollCallResultWindow : Window
     protected override void OnOpened(EventArgs e)
     {
         base.OnOpened(e);
+        // 与抽人悬浮窗同一套 DWM 圆角：亚克力铺满整窗，圆角由系统裁剪，不露第二层。
+        if (TryGetPlatformHandle() is { } handle)
+        {
+            var preference = 2; // DWMWCP_ROUND
+            var cornered = DwmSetWindowAttribute(handle.Handle, DwmwaWindowCornerPreference, ref preference, sizeof(int)) == 0;
+            Card.CornerRadius = cornered ? new CornerRadius(8) : new CornerRadius(0);
+        }
         _ = FadeAsync(0, 1, 200);
         _timer.Interval = TimeSpan.FromSeconds(_seconds);
         _timer.Tick += OnTimerTick;
@@ -77,22 +88,19 @@ public partial class RollCallResultWindow : Window
         Close();
     }
 
+    /// <summary>
+    /// 手动补间不透明度。不使用 Avalonia 的 Animation.RunAsync：其动画时钟在
+    /// ShowActivated=False 的悬浮窗上可能不推进，名字会永远停在透明、窗口却还在。
+    /// Task.Delay 只依赖线程池计时，必定推进；淡入失败也能落到目标值。
+    /// </summary>
     private async Task FadeAsync(double from, double to, int milliseconds)
     {
-        try
+        Card.Opacity = from;
+        var steps = Math.Max(1, milliseconds / 20);
+        for (var step = 1; step <= steps; step++)
         {
-            var animation = new Animation
-            {
-                Duration = TimeSpan.FromMilliseconds(milliseconds),
-                Easing = new CubicEaseOut(),
-                Children =
-                {
-                    new KeyFrame { Cue = new Cue(0d), Setters = { new Setter(OpacityProperty, from) } },
-                    new KeyFrame { Cue = new Cue(1d), Setters = { new Setter(OpacityProperty, to) } },
-                },
-            };
-            await animation.RunAsync(Card);
+            await Task.Delay(20);
+            Card.Opacity = Math.Clamp(from + (to - from) * step / steps, 0d, 1d);
         }
-        catch { /* 动画失败不应阻止名字框显示或关闭。 */ }
     }
 }

@@ -12,23 +12,41 @@
     ShowActivated="False"
     Topmost="True"
     WindowStartupLocation="Manual">
-  <!-- 毛玻璃交给系统亚克力合成（不透明度可调），窗口里不再叠一层高不透明度的白色，
-       也不放标题、名单等文字：内容只有下面两个 Fluent 按钮。 -->
-  <ExperimentalAcrylicBorder x:Name="Shell" Margin="6" CornerRadius="18">
+  <!-- 贡献者：威廉（抽人悬浮窗：真毛玻璃 + DWM 圆角 + 只有按钮里的字）
+       亚克力铺满整窗、不留边距，圆角由 Win11 DWM 裁剪（代码里动态设置）。
+       窗口底色永远是浅色，跟随主题的按钮会在浅底上出现白字（“多人”的老问题），
+       所以两个按钮的面与字都自己画，不依赖主题配色。 -->
+  <Window.Styles>
+    <Style Selector="TextBlock.draw-text">
+      <Setter Property="FontSize" Value="16"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="HorizontalAlignment" Value="Center"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+  </Window.Styles>
+  <ExperimentalAcrylicBorder x:Name="Shell" Margin="0" CornerRadius="8">
     <ExperimentalAcrylicBorder.Material>
       <ExperimentalAcrylicMaterial BackgroundSource="Digger"
-                                   TintColor="White" TintOpacity="0.4" MaterialOpacity="0.55"
-                                   FallbackColor="#E6FFFFFF"/>
+                                   TintColor="White" TintOpacity="0.2" MaterialOpacity="0.44"
+                                   FallbackColor="#CCFFFFFF"/>
     </ExperimentalAcrylicBorder.Material>
-    <Grid ColumnDefinitions="*,*" ColumnSpacing="8" Margin="10">
-      <Button x:Name="SingleButton" Classes="accent" Content="抽人" Click="SingleButton_OnClick"
+    <Grid ColumnDefinitions="*,*" ColumnSpacing="8" Margin="12">
+      <!-- 抽人：宿主强调色（accent）实心面 + 显式白字 -->
+      <Button x:Name="SingleButton" Classes="accent" Click="SingleButton_OnClick"
+              Padding="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+              HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+        <TextBlock Classes="draw-text" Text="抽人" Foreground="#FFFFFFFF"/>
+      </Button>
+      <!-- 多人：深色实心面 + 浅字，面画在内容里，主题换不掉 -->
+      <Button x:Name="MultiButton" Grid.Column="1" Click="MultiButton_OnClick"
+              Background="Transparent" BorderThickness="0" Padding="0"
               HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
-              HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-              FontSize="16"/>
-      <Button x:Name="MultiButton" Grid.Column="1" Content="多人" Click="MultiButton_OnClick"
-              HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
-              HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-              FontSize="16"/>
+              HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+        <Border x:Name="MultiShell" Background="#F2252820" BorderBrush="#40FFFFFF"
+                BorderThickness="1" CornerRadius="8">
+          <TextBlock Classes="draw-text" Text="多人" Foreground="#FFF0EEE5"/>
+        </Border>
+      </Button>
     </Grid>
   </ExperimentalAcrylicBorder>
 </Window>

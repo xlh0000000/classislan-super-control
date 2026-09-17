@@ -35,6 +35,12 @@ public sealed class RollCallStore
 
     public IReadOnlyList<string> Names => Snapshot.Names;
 
+    /// <summary>
+    /// 集控端是否已经下发过名单。下发的空名单也算数（修订号 > 0），
+    /// 否则“服务端故意清空名单”会被本机名字表顶掉。
+    /// </summary>
+    public bool HasServerRoster => Snapshot.Revision > 0 || Snapshot.Names.Count > 0;
+
     /// <summary>名单发生变化时触发，供悬浮窗刷新标题。</summary>
     public event Action? Changed;
 

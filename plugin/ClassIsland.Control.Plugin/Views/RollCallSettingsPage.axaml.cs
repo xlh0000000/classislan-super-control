@@ -10,7 +10,7 @@ namespace ClassIsland.Control.Plugin.Views;
 
 /// <summary>
 /// 点名悬浮窗的设置页，挂在“点名”二级菜单下。
-/// 名单来自集控端，本页只调本机外观与展示节奏；
+/// 名单优先用集控端下发的，没收到时用本页维护的本机名字表；
 /// 归入“关于”类别，与接入页一样在集控端锁定“应用设置”时保持可达。
 /// </summary>
 [SettingsPageInfo("classisland-control.rollcall", "点名悬浮窗", "\uecab", "\uecaa", SettingsPageCategory.About)]
@@ -42,6 +42,7 @@ public partial class RollCallSettingsPage : SettingsPageBase
         MultiBox.Value = settings.RollCallMultiSeconds;
         NotifySwitch.IsChecked = settings.RollCallNotify;
         EnableSwitch.IsChecked = _service.IsVisible;
+        LocalNamesBox.Text = string.Join(Environment.NewLine, settings.RollCallLocalNames);
         _loading = false;
 
         EnableSwitch.IsCheckedChanged += OnChanged;
@@ -51,6 +52,7 @@ public partial class RollCallSettingsPage : SettingsPageBase
         OpacityBox.ValueChanged += OnChanged;
         SingleBox.ValueChanged += OnChanged;
         MultiBox.ValueChanged += OnChanged;
+        LocalNamesBox.LostFocus += OnLocalNamesChanged;
         RenderRoster();
     }
 
@@ -70,6 +72,8 @@ public partial class RollCallSettingsPage : SettingsPageBase
     {
         _service.StateChanged -= OnStateChanged;
         _service.Roster.Changed -= OnStateChanged;
+        // 光标还没移出输入框就直接切页时补一次保存，避免改完名字丢内容。
+        _ = SaveLocalNamesAsync();
         base.OnDetachedFromVisualTree(e);
     }
 
@@ -77,15 +81,56 @@ public partial class RollCallSettingsPage : SettingsPageBase
 
     private void RenderRoster()
     {
-        var count = _service.Roster.Names.Count;
-        var revision = _service.Roster.Snapshot.Revision;
-        RosterText.Text = count > 0
-            ? $"已同步 {count} 人 · R{revision}"
-            : revision > 0 ? "下发的名单为空" : "尚未下发名单";
+        if (_service.Roster.HasServerRoster)
+        {
+            var count = _service.Roster.Names.Count;
+            RosterText.Text = count > 0
+                ? $"已同步 {count} 人 · R{_service.Roster.Snapshot.Revision}"
+                : "下发的名单为空";
+            RosterSourceText.Text = "点名用的是集控端名单，本机名单已让位。";
+        }
+        else
+        {
+            // 还没收到集控端名单：本机名单就是点名用的那份。
+            var local = ReadLocalNames().Count;
+            RosterText.Text = "还没收到";
+            RosterSourceText.Text = local > 0
+                ? $"点名用的是下面这份本机名单（{local} 人）。"
+                : "还没收到集控端名单：先在这里填本机名单，就能点名。";
+        }
         if (_loading) return;
         _loading = true;
         EnableSwitch.IsChecked = _service.IsVisible;
         _loading = false;
+    }
+
+    /// <summary>本机名字表：按行拆分、去空白、去重，保持用户填写的先后顺序。</summary>
+    private List<string> ReadLocalNames()
+    {
+        var lines = (LocalNamesBox.Text ?? string.Empty)
+            .Split(new[] { (char)13, (char)10 }, StringSplitOptions.RemoveEmptyEntries);
+        var names = new List<string>();
+        foreach (var line in lines)
+        {
+            var name = line.Trim();
+            if (name.Length > 0 && !names.Contains(name, StringComparer.Ordinal)) names.Add(name);
+        }
+        return names;
+    }
+
+    private async void OnLocalNamesChanged(object? sender, RoutedEventArgs e) => await SaveLocalNamesAsync();
+
+    /// <summary>把本机名字表落盘；没收到集控端名单时，点名就用它。</summary>
+    private async Task SaveLocalNamesAsync()
+    {
+        var names = ReadLocalNames();
+        if (names.SequenceEqual(_store.Settings.RollCallLocalNames, StringComparer.Ordinal)) return;
+        try
+        {
+            await _store.SaveSettingsAsync(_store.Settings with { RollCallLocalNames = names });
+        }
+        catch { /* 保存失败不影响本次点名，下次改动会重试。 */ }
+        RenderRoster();
     }
 
     private async void OnChanged(object? sender, EventArgs e)
@@ -98,8 +143,8 @@ public partial class RollCallSettingsPage : SettingsPageBase
             RollCallWidth = (double)(WidthBox.Value ?? 260m),
             RollCallHeight = (double)(HeightBox.Value ?? 112m),
             RollCallOpacity = (double)(OpacityBox.Value ?? 0.8m),
-            RollCallSingleSeconds = (int)(SingleBox.Value ?? 3m),
-            RollCallMultiSeconds = (int)(MultiBox.Value ?? 6m),
+            RollCallSingleSeconds = (int)(SingleBox.Value ?? 6m),
+            RollCallMultiSeconds = (int)(MultiBox.Value ?? 10m),
         };
         try
         {

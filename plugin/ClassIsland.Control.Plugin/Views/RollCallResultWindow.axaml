@@ -12,14 +12,15 @@
     ShowActivated="False"
     Topmost="True"
     WindowStartupLocation="CenterScreen">
-  <!-- 与抽人悬浮窗同一套毛玻璃：系统亚克力 + 只显示姓名，不放标题等其他文字。 -->
-  <ExperimentalAcrylicBorder x:Name="Card" Margin="26" CornerRadius="26" Opacity="0">
+  <!-- 贡献者：威廉（点名结果窗：亚克力铺满整窗，圆角由 Win11 DWM 裁剪，只显示姓名；
+       不设初始 Opacity=0——可见性由代码里可靠的补间控制，避免动画时钟不推进导致名字隐形） -->
+  <ExperimentalAcrylicBorder x:Name="Card" Margin="0" CornerRadius="8">
     <ExperimentalAcrylicBorder.Material>
       <ExperimentalAcrylicMaterial BackgroundSource="Digger"
-                                   TintColor="White" TintOpacity="0.5" MaterialOpacity="0.7"
-                                   FallbackColor="#F2FFFFFF"/>
+                                   TintColor="White" TintOpacity="0.2" MaterialOpacity="0.45"
+                                   FallbackColor="#E6FFFFFF"/>
     </ExperimentalAcrylicBorder.Material>
     <WrapPanel x:Name="NameList" Orientation="Horizontal" HorizontalAlignment="Center"
-               Margin="54,32"/>
+               Margin="80,58"/>
   </ExperimentalAcrylicBorder>
 </Window>

@@ -10,7 +10,8 @@ namespace ClassIsland.Control.Plugin.Services;
 
 /// <summary>
 /// 点名悬浮窗的编排：窗口生命周期、抽人/多人抽人、结果展示与 ClassIsland 提醒。
-/// 名单只来自集控端下发（<see cref="RollCallStore"/>），本机不可编辑。
+/// 名单优先用集控端下发的（<see cref="RollCallStore"/>），还没收到时回落到
+/// 设置页维护的本机名字表，所以没连集控也能点名。
 /// </summary>
 public sealed class RollCallService : BackgroundService
 {
@@ -36,6 +37,16 @@ public sealed class RollCallService : BackgroundService
     }
 
     public RollCallStore Roster => _roster;
+
+    /// <summary>
+    /// 生效的名单：集控端下发过就用下发的（下发空名单也算数），
+    /// 否则回落到设置页维护的本机名字表，没连集控也能点名。
+    /// </summary>
+    public IReadOnlyList<string> EffectiveNames =>
+        _roster.HasServerRoster ? _roster.Names : _store.Settings.RollCallLocalNames;
+
+    /// <summary>当前生效的是本机名字表（还没收到集控端名单）。</summary>
+    public bool UsingLocalNames => !_roster.HasServerRoster;
 
     /// <summary>悬浮窗当前是否可见。设置页据此渲染开关，避免和真实状态不一致。</summary>
     public bool IsVisible => _window is { IsVisible: true };
@@ -123,10 +134,15 @@ public sealed class RollCallService : BackgroundService
 
     private void DrawCore(int count)
     {
-        var names = _roster.Names;
+        // 上次抽人的结果还在展示（含淡出）：禁止继续抽人，按钮同时被禁用，
+        // 避免连点把名字一闪而过地替换掉。
+        if (_result is not null) return;
+        var names = EffectiveNames;
         if (names.Count == 0)
         {
-            Notify("点名", "点名名单为空，请在集控端配置名单后再试。");
+            Notify("点名", _roster.HasServerRoster
+                ? "集控端下发的名单是空的。"
+                : "还没有名单：在点名设置里填本机名单，或等集控端下发。");
             return;
         }
         var take = Math.Clamp(count, 1, names.Count);
@@ -137,14 +153,21 @@ public sealed class RollCallService : BackgroundService
             ? Math.Clamp(settings.RollCallSingleSeconds, 1, 120)
             : Math.Clamp(settings.RollCallMultiSeconds, 2, 300) + (take - 2);
 
-        _result?.DismissImmediately();
         var window = new RollCallResultWindow();
         window.ShowResult(picked, seconds);
-        window.Closed += (_, _) => { if (ReferenceEquals(_result, window)) _result = null; };
+        window.Closed += (_, _) =>
+        {
+            if (ReferenceEquals(_result, window)) _result = null;
+            // 展示结束：恢复悬浮窗上的抽人按钮。
+            _window?.SetButtonsEnabled(true);
+        };
         _result = window;
+        // 展示期间禁用抽人按钮，结束（窗口关闭）后恢复。
+        _window?.SetButtonsEnabled(false);
         window.Show();
 
-        if (settings.RollCallNotify) Notify("点名", string.Join("、", picked));
+        // 提醒跟着同一个秒数走：否则提醒还挂在屏幕上，悬浮窗却已经可以再抽了。
+        if (settings.RollCallNotify) Notify("点名", string.Join("、", picked), seconds);
     }
 
     /// <summary>部分洗牌抽人：同一轮内不会重复抽到同一个人。</summary>
@@ -160,7 +183,7 @@ public sealed class RollCallService : BackgroundService
     }
 
     /// <summary>拉起 ClassIsland 提醒。提醒主机不是线程安全的，因此始终在 UI 线程调用。</summary>
-    private void Notify(string title, string content)
+    private void Notify(string title, string content, int? seconds = null)
     {
         try
         {
@@ -171,7 +194,7 @@ public sealed class RollCallService : BackgroundService
                 _logger.LogWarning("The roll-call notification provider is unavailable.");
                 return;
             }
-            provider.Send(title, content);
+            provider.Send(title, content, seconds is { } value ? TimeSpan.FromSeconds(value) : null);
         }
         catch (Exception exception)
         {
