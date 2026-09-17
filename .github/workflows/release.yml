@@ -85,6 +85,7 @@ jobs:
         with:
           images: ${{ steps.image.outputs.name }}
           tags: |
+            type=ref,event=tag
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
       - uses: docker/build-push-action@v7
@@ -120,10 +121,11 @@ jobs:
       - name: 整理产物
         run: |
           mkdir -p upload
-          cp artifacts/plugin-cipx/ClassIsland.Control.Plugin.cipx upload/
-          cp artifacts/plugin-cipx/checksums.md upload/
-          cp artifacts/server-tarball/*.tar.gz upload/
+          find artifacts -name '*.cipx' -exec cp {} upload/ \;
+          find artifacts -name 'checksums.md' -exec cp {} upload/ \;
+          find artifacts -name '*.tar.gz' -exec cp {} upload/ \;
           ls -l upload
+          test -n "$(ls -A upload)"
       - name: 建立或更新 Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
