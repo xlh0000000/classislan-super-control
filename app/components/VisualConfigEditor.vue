@@ -28,7 +28,7 @@ const toast = useToast();
 const busy = ref(false);
 const loading = ref(true);
 const revision = ref(props.revision ?? 0);
-const tab = ref<"visual" | "json">("visual");
+const tab = ref("visual");
 const jsonText = ref("");
 const source = ref<Record<string, unknown>>({});
 const profile = ref<ProfileSettingsModel | null>(null);
@@ -38,6 +38,7 @@ const kindTitle = computed(() => CONFIG_KIND_LABELS[props.kind] ?? props.kind);
 /** 目前只有档案与组件布局有可靠的结构定义，其余类型只能编辑 JSON。 */
 const hasVisual = computed(() => props.kind === "profile" || props.kind === "components");
 const showVisual = computed(() => hasVisual.value && tab.value === "visual");
+const tabs = computed(() => (hasVisual.value ? [{ key: "visual", label: "可视化" }, { key: "json", label: "JSON" }] : []));
 
 function buildModels() {
   profile.value = props.kind === "profile" ? readProfileSettings(source.value) : null;
@@ -50,7 +51,7 @@ function currentDocument(): Record<string, unknown> {
   return source.value;
 }
 
-function setTab(next: "visual" | "json") {
+function setTab(next: string) {
   if (next === tab.value) return;
   if (next === "json") jsonText.value = JSON.stringify(currentDocument(), null, 2);
   else if (!applyJson()) return;
@@ -61,14 +62,14 @@ function applyJson(): boolean {
   try {
     const parsed: unknown = JSON.parse(jsonText.value);
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      toast.err("配置文档的根必须是 JSON 对象。");
+      toast.err("配置的根必须是 JSON 对象。");
       return false;
     }
     source.value = parsed as Record<string, unknown>;
     buildModels();
     return true;
   } catch {
-    toast.err("JSON 解析失败，请检查语法。");
+    toast.err("JSON 语法不对，检查一下。");
     return false;
   }
 }
@@ -106,10 +107,10 @@ async function save() {
     source.value = currentDocument();
     buildModels();
     if (tab.value === "json") jsonText.value = JSON.stringify(source.value, null, 2);
-    toast.ok(`已保存为 R${result.revision}。`);
+    toast.ok(`已存成 R${result.revision}。`);
     emit("saved", result.revision);
   } catch (err) {
-    toast.err((err as { data?: { message?: string } })?.data?.message ?? "保存失败，请确认结构有效。");
+    toast.err((err as { data?: { message?: string } })?.data?.message ?? "保存失败，检查一下结构。");
   } finally {
     busy.value = false;
   }
@@ -124,7 +125,7 @@ onMounted(async () => {
     tab.value = hasVisual.value ? "visual" : "json";
     if (!hasVisual.value) jsonText.value = JSON.stringify(source.value, null, 2);
   } catch (err) {
-    toast.err((err as { data?: { message?: string } })?.data?.message ?? "加载配置文档失败。");
+    toast.err((err as { data?: { message?: string } })?.data?.message ?? "读不到配置内容。");
   } finally {
     loading.value = false;
   }
@@ -133,20 +134,15 @@ onMounted(async () => {
 
 <template>
   <AppDialog
-    :title="`可视化编辑：${props.name}`"
-    :kicker="`CONFIGURATION / ${kindTitle} · 当前 R${revision}`"
+    :title="props.name"
+    :kicker="`${kindTitle} · 当前 R${revision}`"
     width="1080px"
     @close="emit('close')"
   >
-    <div v-if="loading" class="muted">正在载入最新修订…</div>
+    <div v-if="loading" class="muted">加载中…</div>
     <template v-else>
-      <nav v-if="hasVisual" class="tabs">
-        <button type="button" :class="{ active: tab === 'visual' }" @click="setTab('visual')">可视化</button>
-        <button type="button" :class="{ active: tab === 'json' }" @click="setTab('json')">高级 JSON</button>
-      </nav>
-      <p v-else class="notice">
-        该类型没有可靠的结构定义（自动化工作流与插件设置由宿主与插件自行解释），只能编辑 JSON。
-      </p>
+      <PageTabs v-if="hasVisual" :model-value="tab" :items="tabs" @update:model-value="setTab" />
+      <p v-else class="notice">这个类型没有结构化表单，只能改 JSON。</p>
 
       <template v-if="showVisual && profile">
         <section class="group">
@@ -156,12 +152,12 @@ onMounted(async () => {
         <section class="group">
           <h3>叠加课表</h3>
           <div class="row">
-            <SwitchToggle v-model="profile.overlayEnabled" label="启用临时层课表" hint="在正常课表之上叠加一层，用于临时调整" />
+            <SwitchToggle v-model="profile.overlayEnabled" label="启用叠加层" hint="在正常课表上再叠一层" />
           </div>
           <div v-if="profile.overlayEnabled" class="row">
-            <span class="label">叠加的课表</span>
+            <span class="label">叠哪张课表</span>
             <select v-model="profile.overlayClassPlanId">
-              <option value="">未选择</option>
+              <option value="">未选</option>
               <option v-for="plan in profile.classPlans" :key="plan.id" :value="plan.id">{{ plan.name }}</option>
             </select>
           </div>
@@ -169,7 +165,7 @@ onMounted(async () => {
         <section class="group">
           <h3>临时课表群</h3>
           <div class="row">
-            <SwitchToggle v-model="profile.tempGroupEnabled" label="启用临时课表群" hint="按临时课表群切换一整套课表" />
+            <SwitchToggle v-model="profile.tempGroupEnabled" label="启用临时课表群" hint="换一整套课表" />
           </div>
           <div v-if="profile.tempGroupEnabled" class="row">
             <span class="label">生效方式</span>
@@ -181,7 +177,7 @@ onMounted(async () => {
         <section class="group">
           <h3>默认课表群</h3>
           <div class="row">
-            <span class="label">设备启动时使用的课表群</span>
+            <span class="label">开机时用哪个课表群</span>
             <select v-model="profile.selectedClassPlanGroupId">
               <option v-for="group in profile.groups" :key="group.id" :value="group.id">{{ group.name }}</option>
             </select>
@@ -189,8 +185,10 @@ onMounted(async () => {
         </section>
         <section class="group">
           <h3>课表内容</h3>
-          <p class="hint">科目、时间表与一周课表在课表可视化编辑器里改，保存后回到这里下发。</p>
-          <NuxtLink class="link" :to="`/timetable?config=${props.configurationId}`">打开可视化课表编辑器</NuxtLink>
+          <div class="row">
+            <span class="label">科目、时间表和一周课表在课表页改</span>
+            <NuxtLink class="link" :to="`/timetable?config=${props.configurationId}`">打开课表页 <i class="arrow">→</i></NuxtLink>
+          </div>
         </section>
       </template>
 
@@ -198,14 +196,14 @@ onMounted(async () => {
         <div class="lines">
           <article v-for="(line, li) in lines" :key="li" class="line">
             <header>
-              <div><span>LINE {{ li + 1 }}</span><strong>{{ line.children.length }} 个组件</strong></div>
+              <div><span class="micro">第 {{ li + 1 }} 行</span><strong>{{ line.children.length }} 个组件</strong></div>
               <div class="ops">
                 <button type="button" :disabled="li === 0" @click="move(lines, li, -1)">上移</button>
                 <button type="button" :disabled="li === lines.length - 1" @click="move(lines, li, 1)">下移</button>
                 <button type="button" class="danger" @click="lines.splice(li, 1)">删除行</button>
               </div>
             </header>
-            <div class="row"><SwitchToggle v-model="line.isMainLine" label="主要行" hint="主界面上的主要信息行" /></div>
+            <div class="row"><SwitchToggle v-model="line.isMainLine" label="主要行" hint="主界面的主要内容行" /></div>
             <div class="row"><SwitchToggle v-model="line.isNotificationEnabled" label="启用提醒" /></div>
             <div class="row"><SwitchToggle v-model="line.hideOnRule" label="按规则隐藏" /></div>
             <div class="row">
@@ -236,7 +234,7 @@ onMounted(async () => {
                   <input v-if="node.fixedWidthEnabled" v-model.number="node.fixedWidth" type="number" min="10" max="2000">
                 </div>
                 <details v-if="node.hasSettings" class="settings">
-                  <summary>组件设置（{{ settingFields(node).length }} 项）</summary>
+                  <summary>组件设置 · {{ settingFields(node).length }} 项</summary>
                   <div v-for="field in settingFields(node)" :key="field.key" class="row">
                     <SwitchToggle
                       v-if="field.kind === 'bool'"
@@ -267,7 +265,7 @@ onMounted(async () => {
                       >
                     </template>
                   </div>
-                  <p v-if="!settingFields(node).length" class="hint">该组件没有可表单化的设置项。</p>
+                  <p v-if="!settingFields(node).length" class="hint">这个组件没有可改的设置。</p>
                 </details>
                 <div class="ops">
                   <button type="button" :disabled="ni === 0" @click="move(line.children, ni, -1)">上移</button>
@@ -280,7 +278,7 @@ onMounted(async () => {
           </article>
           <button type="button" class="add" @click="lines.push(newComponentLine())">添加行</button>
         </div>
-        <p class="hint">组件 ID 是设备上注册的组件 GUID，这里不做校验；未知 ID 会在设备上显示为空白组件。</p>
+        <p class="hint">组件 ID 要用设备上注册的 GUID，写错会显示成空白组件。</p>
       </template>
 
       <textarea v-else v-model="jsonText" class="json" spellcheck="false" />
@@ -291,36 +289,36 @@ onMounted(async () => {
       <button type="button" :disabled="busy || loading" @click="save">{{ busy ? "保存中…" : "保存为新修订" }}</button>
     </template>
   </AppDialog>
-</template>
-
-<style scoped>
-.tabs{margin-bottom:14px}
-.notice{margin:0 0 14px;padding:12px 16px;border-radius:14px;background:var(--surface-2);color:var(--ink-soft);font-size:11px;line-height:1.6}
-.group{margin-bottom:14px;padding:18px 20px;border-radius:var(--radius-md);background:var(--surface-1)}
-.group h3{margin:0 0 12px;font-size:12px;color:var(--ink-soft)}
-.row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 14px;border-radius:14px;background:var(--surface-2)}
-.row + .row{margin-top:8px}
-.label{font-size:12px}
-.row input[type=text],.row input:not([type]),.row select{min-height:var(--control-h);padding:0 12px;border:0;border-radius:var(--radius-control);background:var(--surface-1);color:var(--ink);min-width:180px}
-.row input[type=number]{width:120px;min-height:var(--control-h);padding:0 12px;border:0;border-radius:var(--radius-control);background:var(--surface-1);color:var(--ink)}
-.row input[type=color]{width:56px;min-height:var(--control-h);padding:3px;border:0;border-radius:var(--radius-control);background:var(--surface-1)}
-.hint{margin:12px 0 0;color:var(--ink-muted);font-size:10px;line-height:1.6}
-.link{display:inline-flex;min-height:var(--control-h);align-items:center;padding:0 16px;border-radius:14px;background:var(--surface-2);color:var(--ink);font-size:12px;text-decoration:none}
-.lines{display:grid;gap:12px}
-.line{padding:16px;border-radius:var(--radius-md);background:var(--surface-1)}
-.line > header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
-.line > header span{color:var(--ink-muted);font-size:9px;letter-spacing:.12em}
-.line > header strong{display:block;margin-top:5px;font-size:14px}
-.nodes{display:grid;gap:10px;margin-top:12px}
-.node{padding:14px;border-radius:var(--radius-row);background:var(--surface-2)}
-.node .row{background:var(--surface-1)}
-.settings{margin-top:12px;padding:12px 14px;border-radius:14px;background:var(--surface-1)}
-.settings summary{cursor:pointer;color:var(--ink-soft);font-size:11px}
-.ops{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
-.ops button,.add{min-height:36px;padding:0 14px;border:0;border-radius:12px;background:var(--surface-3);color:var(--ink);cursor:pointer;font-size:11px}
-.ops button.danger{color:var(--bad)}
-.ops button:disabled{opacity:.4;cursor:not-allowed}
-.add{width:100%;margin-top:10px;background:var(--surface-2);color:var(--ink-soft)}
-.json{width:100%;min-height:460px;padding:16px;border:0;border-radius:var(--radius-row);background:var(--surface-2);color:var(--ink);font-family:ui-monospace,monospace;font-size:11px;line-height:1.6;resize:vertical}
-@media (max-width:700px){.row{flex-wrap:wrap}.row input:not([type=color]):not([type=number]),.row select{min-width:0;width:100%}}
+</template><style scoped>
+.notice{margin:0 0 20px;padding:12px 16px;border-left:2px solid var(--accent);background:var(--surface-2);color:var(--ink-soft);font-size:11px;line-height:1.7}
+.group{margin-bottom:18px;border:1px solid var(--line-soft);background:var(--surface-1)}
+.group h3{margin:0;padding:14px 18px;border-bottom:1px solid var(--line-strong);font-size:14px;font-weight:600}
+.row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px;min-height:56px;padding:10px 18px;border-bottom:1px solid var(--line-soft);transition:background var(--t-base) var(--ease-enter)}
+.row:last-child{border-bottom:0}
+.row:hover{background:var(--accent-wash)}
+.label{color:var(--ink-soft);font-size:12px}
+.row input[type=text],.row input:not([type]),.row select{min-width:190px}
+.row input[type=number]{width:120px}
+.row input[type=color]{width:56px;min-height:var(--control-h-sm);padding:2px}
+.hint{margin:14px 0 0;color:var(--ink-muted);font-size:11px;line-height:1.7}
+.link{display:inline-flex;align-items:center;gap:8px;padding-bottom:5px;border-bottom:1px solid var(--line-strong);color:var(--ink-soft);font-size:12px;text-decoration:none;transition:color var(--t-mid) var(--ease-enter),border-color var(--t-mid) var(--ease-enter)}
+.link:hover{border-color:var(--accent);color:var(--accent)}
+.lines{display:grid;gap:18px}
+.line{border:1px solid var(--line-strong);background:var(--surface-1)}
+.line > header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:14px;padding:14px 18px;border-bottom:1px solid var(--line-strong)}
+.line > header strong{display:block;margin-top:6px;font-size:15px;font-weight:600}
+.line > header .ops{padding:0;border:0;background:transparent}
+.nodes{display:grid;gap:1px;background:var(--line-soft)}
+.node{background:var(--surface-2)}
+.node .row{background:transparent}
+.settings{margin:0;border-top:1px solid var(--line-soft)}
+.settings summary{cursor:pointer;padding:14px 18px;color:var(--ink-soft);font-size:12px;letter-spacing:.6px;transition:color var(--t-mid) var(--ease-enter)}
+.settings summary:hover{color:var(--accent)}
+.settings .row{padding-left:34px}
+.ops{display:flex;flex-wrap:wrap;gap:10px;padding:12px 18px;border-top:1px solid var(--line-soft);background:var(--surface-1)}
+.ops button{min-height:var(--control-h-sm)}
+.add{width:100%;min-height:var(--control-h);border-style:dashed;color:var(--ink-muted);background:var(--surface-1)}
+.add:hover:not(:disabled){border-style:solid}
+.json{width:100%;min-height:460px;padding:16px 18px;border:1px solid var(--line);background:var(--surface-2);color:var(--ink);font-family:ui-monospace,monospace;font-size:11px;line-height:1.7;resize:vertical}
+@media (max-width:700px){.row{flex-direction:column;align-items:stretch;gap:10px}.row input:not([type=color]),.row select{width:100%;min-width:0}}
 </style>

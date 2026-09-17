@@ -85,40 +85,58 @@ async function runRemoveUser(user: UserRow) {
 </script>
 
 <template>
-  <PageHeading kicker="ACCESS CONTROL / 账号与角色" title="用户" description="为管理人员分配最小必要角色。所有者唯一且不可降级；可将账号限定在某个组织子树内，仅能管理该范围内的设备与任务。密码使用 Argon2id 存储；修改密码、角色或组织范围会撤销该账号的现有会话，停用账号同样立即失效。">
-    <button type="button" @click="showCreate = !showCreate">新建用户</button>
+  <PageHeading kicker="谁能登录、能做什么" title="用户">
+    <button type="button" class="solid" @click="showCreate = true">新建用户</button>
   </PageHeading>
-  <AppDialog v-if="showCreate" title="新建用户" kicker="ACCESS CONTROL / 账号与角色" @close="showCreate = false">
+
+  <AppDialog v-if="showCreate" title="新建用户" kicker="账号与角色" @close="showCreate = false">
     <form id="user-create" class="editor" @submit.prevent="createUser">
-    <label>用户名<input v-model.trim="createForm.username" required minlength="3" maxlength="32" pattern="[A-Za-z0-9_.\-]+" placeholder="operator01"></label>
-    <label>显示名称<input v-model.trim="createForm.displayName" maxlength="50" placeholder="可选"></label>
-    <label>初始密码<input v-model="createForm.password" type="password" required minlength="12" maxlength="128" autocomplete="new-password"></label>
-    <label>角色<select v-model="createForm.role"><option v-for="role in creatableRoles" :key="role[0]" :value="role[0]">{{ role[1] }}</option></select></label>
-    <label>管理范围<select v-model="createForm.scopeOrgNodeId"><option value="">全校</option><option v-for="node in orgNodes" :key="node.id" :value="node.id">{{ node.name }}</option></select></label>
+      <label>用户名<input v-model.trim="createForm.username" required minlength="3" maxlength="32" pattern="[A-Za-z0-9_.\-]+" placeholder="operator01"></label>
+      <label>显示名称<input v-model.trim="createForm.displayName" maxlength="50" placeholder="可选"></label>
+      <label>初始密码<input v-model="createForm.password" type="password" required minlength="12" maxlength="128" autocomplete="new-password"></label>
+      <label>角色<select v-model="createForm.role"><option v-for="role in creatableRoles" :key="role[0]" :value="role[0]">{{ role[1] }}</option></select></label>
+      <label>管理范围<select v-model="createForm.scopeOrgNodeId"><option value="">全校</option><option v-for="node in orgNodes" :key="node.id" :value="node.id">{{ node.name }}</option></select></label>
     </form>
     <template #footer>
       <button type="button" class="ghost" @click="showCreate = false">取消</button>
       <button type="submit" form="user-create">创建用户</button>
     </template>
   </AppDialog>
-  <AppDialog v-if="editing" title="编辑用户" kicker="ACCESS CONTROL / 账号与角色" @close="editing = null">
+
+  <AppDialog v-if="editing" title="编辑用户" kicker="账号与角色" @close="editing = null">
     <form id="user-edit" class="editor" @submit.prevent="saveEdit">
-    <label>显示名称<input v-model.trim="editForm.displayName" maxlength="50"></label>
-    <label>角色<select v-model="editForm.role" :disabled="editing.role === 'owner'"><option v-for="role in roles" :key="role[0]" :value="role[0]" :disabled="editing.role === 'owner' && role[0] !== 'owner'">{{ role[1] }}</option></select></label>
-    <label>管理范围<select v-model="editForm.scopeOrgNodeId" :disabled="editing.role === 'owner' || editForm.role === 'owner'"><option value="">全校</option><option v-for="node in orgNodes" :key="node.id" :value="node.id">{{ node.name }}</option></select></label>
-    <label>重置密码<input v-model="editForm.password" type="password" minlength="12" maxlength="128" autocomplete="new-password" placeholder="留空表示不修改"></label>
+      <label>显示名称<input v-model.trim="editForm.displayName" maxlength="50"></label>
+      <label>角色<select v-model="editForm.role" :disabled="editing.role === 'owner'"><option v-for="role in roles" :key="role[0]" :value="role[0]" :disabled="editing.role === 'owner' && role[0] !== 'owner'">{{ role[1] }}</option></select></label>
+      <label>管理范围<select v-model="editForm.scopeOrgNodeId" :disabled="editing.role === 'owner' || editForm.role === 'owner'"><option value="">全校</option><option v-for="node in orgNodes" :key="node.id" :value="node.id">{{ node.name }}</option></select></label>
+      <label>重置密码<input v-model="editForm.password" type="password" minlength="12" maxlength="128" autocomplete="new-password" placeholder="留空表示不修改"></label>
     </form>
     <template #footer>
       <button type="button" class="ghost" @click="editing = null">取消</button>
       <button type="submit" form="user-edit">保存</button>
     </template>
   </AppDialog>
+
   <div v-if="data.length" class="table-shell">
-    <table><thead><tr><th>账号</th><th>角色</th><th>范围</th><th>创建时间</th><th>状态</th><th></th></tr></thead>
-      <tbody><tr v-for="user in data" :key="user.id"><td><strong>{{ user.displayName }}</strong><small>{{ user.username }}</small></td><td>{{ roleLabel(user.role) }}</td><td>{{ scopeLabel(user.scopeOrgNodeId) }}</td><td>{{ user.createdAt }}</td><td>{{ user.disabledAt ? '已停用' : '正常' }}</td><td class="row-actions"><button type="button" @click="openEdit(user)">编辑</button><button type="button" :disabled="user.role === 'owner'" @click="toggleUser(user)">{{ user.disabledAt ? '启用' : '停用' }}</button><button type="button" class="danger" :disabled="user.role === 'owner'" @click="removeUser(user)">删除</button></td></tr></tbody>
+    <table>
+      <thead><tr><th>账号</th><th>角色</th><th>范围</th><th>创建时间</th><th>状态</th><th></th></tr></thead>
+      <tbody>
+        <tr v-for="user in data" :key="user.id">
+          <td class="account"><strong>{{ user.displayName }}</strong><small>{{ user.username }}</small></td>
+          <td>{{ roleLabel(user.role) }}</td>
+          <td>{{ scopeLabel(user.scopeOrgNodeId) }}</td>
+          <td class="time">{{ user.createdAt }}</td>
+          <td>{{ user.disabledAt ? '已停用' : '正常' }}</td>
+          <td class="row-actions">
+            <button type="button" @click="openEdit(user)">编辑</button>
+            <button type="button" :disabled="user.role === 'owner'" @click="toggleUser(user)">{{ user.disabledAt ? '启用' : '停用' }}</button>
+            <button type="button" :disabled="user.role === 'owner'" @click="removeUser(user)">删除</button>
+          </td>
+        </tr>
+      </tbody>
     </table>
   </div>
-  <EmptyState v-else title="尚无用户" description="首位管理员通过首设向导创建；在 <code>/setup</code> 配置完成前该入口保持开启。" />
+  <EmptyState v-else title="还没有用户" />
+
   <ConfirmDialog
     v-if="pending"
     :title="pending.title"
@@ -129,9 +147,16 @@ async function runRemoveUser(user: UserRow) {
     @close="pending = null"
     @confirm="runPending"
   />
-</template>
-
-<style scoped>
-
-.editor{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px;padding:24px;border-radius:var(--radius-md);background:var(--surface-1)}.editor label{display:grid;gap:7px;font-size:10px;color:var(--ink-soft)}.editor input,.editor select{min-height:44px;padding:0 14px;border:0;border-radius:14px;background:var(--surface-2);color:var(--ink)}.editor .actions{grid-column:1/-1;display:flex;gap:8px}.editor button,.row-actions button{min-height:44px;padding:0 16px;border:0;border-radius:14px;background:var(--ink);color:var(--canvas);cursor:pointer}.editor button.ghost{background:var(--surface-2);color:var(--ink)}.table-shell{margin-top:14px;overflow:auto;border-radius:var(--radius-md);background:var(--surface-1)}table{width:100%;border-collapse:collapse}th,td{padding:18px 20px;text-align:left}th{color:var(--ink-muted);font-size:9px;letter-spacing:.08em}td{font-size:12px}tbody tr:nth-child(odd){background:var(--surface-2)}td:first-child{display:grid;gap:3px}td small{color:var(--ink-muted)}.row-actions{display:flex;gap:8px;justify-content:flex-end}.row-actions button{background:var(--surface-2);color:var(--ink)}.row-actions button.danger{color:var(--bad)}.row-actions button:disabled{opacity:.4;cursor:not-allowed}@media(max-width:780px){.editor{grid-template-columns:1fr}}
+</template><style scoped>
+.editor { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.editor label { display: grid; gap: 8px; color: var(--ink-muted); font-size: 11px; letter-spacing: 0.6px; }
+.editor input, .editor select { width: 100%; }
+.table-shell { overflow: auto; border-top: 1px solid var(--line-strong); }
+.account { display: grid; gap: 4px; }
+.account strong { font-size: 14px; font-weight: 600; color: var(--ink); }
+.account small { color: var(--ink-muted); font-size: 10px; letter-spacing: 0.6px; }
+.time { color: var(--ink-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.row-actions { justify-content: flex-end; }
+.row-actions button:disabled { opacity: 0.35; }
+@media (max-width: 780px) { .editor { grid-template-columns: 1fr; } }
 </style>

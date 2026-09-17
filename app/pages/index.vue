@@ -32,16 +32,16 @@ async function changed() { await refresh(); }
 </script>
 
 <template>
-  <PageHeading kicker="BUILDING LAYOUT / 楼栋部署" title="楼栋部署">
+  <PageHeading kicker="按楼栋管设备" title="楼栋部署">
     <div class="picked">
-      <span>{{ empty ? "未选择目标" : `已选 ${count} 台设备` }}</span>
-      <button type="button" class="ghost" @click="showTargets = true">选择目标</button>
+      <span class="count">{{ empty ? "未选目标" : `已选 ${count} 台` }}</span>
+      <button type="button" class="solid" @click="showTargets = true">选择目标</button>
       <template v-if="!empty">
         <NuxtLink class="ghost" to="/policies?new=1">发布策略</NuxtLink>
         <NuxtLink class="ghost" to="/timetable?publish=1">发布课表</NuxtLink>
         <NuxtLink class="ghost" to="/configurations">下发配置</NuxtLink>
         <NuxtLink class="ghost" to="/tasks?new=1">发布任务</NuxtLink>
-        <button type="button" class="ghost" @click="clear">清空</button>
+        <button type="button" class="ghost" @click="clear">清空选择</button>
       </template>
     </div>
   </PageHeading>
@@ -73,6 +73,6 @@ async function changed() { await refresh(); }
 </template>
 
 <style scoped>
-.picked { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.picked span { color: var(--ink-muted); font-size: 11px; }
+.picked { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.count { margin-right: 8px; color: var(--ink-muted); font-size: 11px; letter-spacing: 0.8px; font-variant-numeric: tabular-nums; }
 </style>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// 贡献者：威廉
 const { toasts, dismiss } = useToast();
 </script>
 
@@ -16,12 +17,14 @@ const { toasts, dismiss } = useToast();
 </template>
 
 <style scoped>
-.toast-host{position:fixed;top:18px;right:18px;z-index:400;display:grid;gap:10px;width:min(380px,calc(100vw - 36px));pointer-events:none}
-.toast{pointer-events:auto;display:flex;align-items:start;gap:12px;padding:14px 12px 14px 16px;border-radius:var(--radius-row);background:var(--surface-glass,var(--surface-1));backdrop-filter:blur(18px);box-shadow:0 18px 40px rgb(0 0 0/.16);border-left:3px solid var(--ink-muted);color:var(--ink);font-size:12px;line-height:1.5}
+/* RhineLab 式提示：底部居中深橄榄条、浅字、300ms 上浮淡入。 */
+.toast-host{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);z-index:400;display:grid;justify-items:center;gap:10px;width:min(560px,calc(100vw - 36px));pointer-events:none}
+.toast{pointer-events:auto;display:flex;align-items:center;gap:16px;padding:15px 20px 15px 27px;background:var(--fill);color:var(--fill-ink);border-left:3px solid var(--accent);font-size:14px}
 .toast[data-kind="ok"]{border-left-color:var(--good)}
 .toast[data-kind="err"]{border-left-color:var(--bad)}
 .toast span{flex:1}
-.toast button{width:28px;height:28px;flex:none;border:0;border-radius:8px;background:var(--surface-2);color:var(--ink-soft);cursor:pointer;font-size:12px;line-height:1}
-.toast-enter-active,.toast-leave-active{transition:opacity 180ms var(--ease-enter,ease),transform 180ms var(--ease-enter,ease)}
-.toast-enter-from,.toast-leave-to{opacity:0;transform:translateY(-6px) scale(.98)}
+.toast button{width:26px;height:26px;flex:none;border:0;background:none;color:inherit;opacity:.7;cursor:pointer;font-size:14px;line-height:1}
+.toast button:hover{opacity:1}
+.toast-enter-active,.toast-leave-active{transition:opacity 300ms var(--ease-enter,ease),transform 300ms var(--ease-enter,ease)}
+.toast-enter-from,.toast-leave-to{opacity:0;transform:translateY(15px)}
 </style>

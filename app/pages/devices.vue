@@ -29,7 +29,7 @@ const syncText = computed(() => {
   if (!status) return "—";
   if (status.inSync) return "已同步";
   if (selected.value?.disabledAt) return "已禁用";
-  return selected.value?.online ? "漂移待重同步" : "离线未上报";
+  return selected.value?.online ? "有偏差，待重同步" : "离线未上报";
 });
 /** 崩溃摘要只给一行，堆栈与归组在崩溃页看。 */
 const crashText = computed(() => {
@@ -257,13 +257,13 @@ async function adoptTimetable() {
 </script>
 
 <template>
-  <PageHeading kicker="CLIENT DIRECTORY / 设备目录" title="设备" description="查看轮询、能力、策略合规与最后执行结果。在线状态只表示最近成功联系，不代表所有策略均已应用。">
+  <PageHeading kicker="每台终端的状态" title="设备">
     <NuxtLink to="/enrollment">接入设备</NuxtLink>
   </PageHeading>
   <section class="bulk">
-    <div><span>BULK / 批量操作</span><strong>{{ targetEmpty ? "未选择目标" : targetSummary }}</strong><small>{{ targetCount }} 台设备</small></div>
+    <div><span>批量下发</span><strong>{{ targetEmpty ? "未选择目标" : targetSummary }}</strong><small>{{ targetCount }} 台设备</small></div>
     <div class="bulk-actions">
-      <button type="button" class="ghost pick" @click="showTargets = true">选择目标</button>
+      <button type="button" class="solid pick" @click="showTargets = true">选择目标</button>
       <button type="button" :disabled="bulkBusy || targetEmpty" @click="bulk('enable')">批量启用</button>
       <button type="button" class="danger" :disabled="bulkBusy || targetEmpty" @click="bulk('disable')">批量停用</button>
       <button type="button" :disabled="bulkBusy || targetEmpty" @click="bulkTransport('http')">改轮询</button>
@@ -275,34 +275,34 @@ async function adoptTimetable() {
       <tbody><tr v-for="device in devices" :key="device.id" :class="{ selected: selected?.id === device.id }"><td><strong>{{ device.name }}</strong><small>{{ device.id }}</small></td><td>{{ device.orgName }}</td><td><span class="state" :data-online="device.online" :data-disabled="device.disabled">{{ device.disabled ? "已禁用" : device.online ? "在线" : "离线" }}</span></td><td>{{ device.transport === "websocket" ? "长连接" : "轮询" }}</td><td>{{ device.pluginVersion }} / {{ device.appVersion }}</td><td>{{ device.lastSeen || "从未" }}</td><td class="row-actions"><button type="button" @click="open(device)">详情</button></td></tr></tbody>
     </table>
   </div>
-  <EmptyState v-else title="尚无受管设备" description="创建短时一次性接入码，或生成绑定组织节点的预配置批量包。有效凭据注册后会自动激活。" action="创建接入凭据" to="/enrollment" />
+  <EmptyState v-else title="还没有设备接入" action="创建接入凭据" to="/enrollment" />
   <TargetPickerDialog v-if="showTargets" @close="showTargets = false" />
   <AppDialog v-if="loading" title="设备详情"
- kicker="CLIENT DIRECTORY / 设备详情" width="940px" @close="loading = false">
-    <p class="muted">正在加载设备详情…</p>
+ kicker="设备详情" width="940px" @close="loading = false">
+    <p class="muted">正在加载…</p>
   </AppDialog>
-  <AppDialog v-else-if="selected" :title="selected.name" kicker="CLIENT DIRECTORY / 设备详情" width="940px" @close="selected = null">
+  <AppDialog v-else-if="selected" :title="selected.name" kicker="设备详情" width="940px" @close="selected = null">
     <small class="muted">{{ selected.id }}</small>
     <div class="detail-grid">
-      <article><h3>标识与版本</h3><dl><dt>插件版本</dt><dd>{{ selected.pluginVersion || "—" }}</dd><dt>宿主版本</dt><dd>{{ selected.appVersion || "—" }}</dd><dt>平台</dt><dd>{{ selected.platform || "—" }}</dd><dt>能力摘要</dt><dd>{{ selected.capabilityDigest || "—" }}</dd></dl></article>
-      <article><h3>合规与同步</h3><dl><dt>期望策略</dt><dd>R{{ selected.policyStatus?.desired.revision ?? selected.policyRevision }} · epoch {{ selected.policyStatus?.desired.epoch ?? "—" }}</dd><dt>已应用</dt><dd>R{{ selected.policyRevision }} · epoch {{ selected.policyStatus?.applied.epoch ?? "—" }}</dd><dt>同步状态</dt><dd>{{ syncText }}</dd><dt>偏差计数</dt><dd>{{ selected.driftCount }}</dd><dt>崩溃记录</dt><dd>{{ crashText }} <NuxtLink class="crash-link" :to="`/crashes?deviceId=${selected.id}`">明细</NuxtLink></dd><dt>最近序号</dt><dd>{{ selected.lastSequence }}</dd><dt>最后联系</dt><dd>{{ selected.online ? "在线" : "离线" }} · {{ selected.lastSeenAt || "从未" }}</dd><dt>注册时间</dt><dd>{{ selected.createdAt }}</dd></dl></article>
+      <article><h3>版本</h3><dl><dt>插件版本</dt><dd>{{ selected.pluginVersion || "—" }}</dd><dt>宿主版本</dt><dd>{{ selected.appVersion || "—" }}</dd><dt>平台</dt><dd>{{ selected.platform || "—" }}</dd><dt>能力摘要</dt><dd>{{ selected.capabilityDigest || "—" }}</dd></dl></article>
+      <article><h3>同步</h3><dl><dt>期望策略</dt><dd>R{{ selected.policyStatus?.desired.revision ?? selected.policyRevision }}</dd><dt>已应用</dt><dd>R{{ selected.policyRevision }}</dd><dt>同步状态</dt><dd>{{ syncText }}</dd><dt>偏差计数</dt><dd>{{ selected.driftCount }}</dd><dt>崩溃记录</dt><dd>{{ crashText }} <NuxtLink class="crash-link" :to="`/crashes?deviceId=${selected.id}`">明细</NuxtLink></dd><dt>最近序号</dt><dd>{{ selected.lastSequence }}</dd><dt>最后联系</dt><dd>{{ selected.online ? "在线" : "离线" }} · {{ selected.lastSeenAt || "从未" }}</dd><dt>注册时间</dt><dd>{{ selected.createdAt }}</dd></dl></article>
     </div>
     <form class="rename" @submit.prevent="rename"><label>设备名称<input v-model.trim="renameValue" maxlength="100"></label><button :disabled="!renameValue.trim() || renameValue === selected.name">保存名称</button></form>
     <div class="actions"><button v-if="!selected.disabledAt" type="button" class="danger" @click="setDisabled(true)">禁用设备</button><button v-else type="button" @click="setDisabled(false)">恢复设备</button><button type="button" class="danger" @click="releaseDevice">解除集控</button><button type="button" class="danger" @click="removeDevice">删除设备</button></div>
-    <article class="block"><h3>连接方式</h3>
+    <article class="block"><h3>连接</h3>
       <div class="seg">
         <button type="button" :data-active="selected.transport !== 'websocket'" @click="setTransport('http')">HTTP 轮询</button>
         <button type="button" :data-active="selected.transport === 'websocket'" @click="setTransport('websocket')">WebSocket 长连接</button>
       </div>
-      <p class="muted">长连接省去每次轮询的握手；改动在设备下次同步后生效。</p>
+      <p class="muted">长连接不用反复握手，下次同步生效。</p>
     </article>
-    <article class="block timetable-block"><h3>课表档案</h3>
+    <article class="block timetable-block"><h3>课表</h3>
       <template v-if="selected.timetable">
         <div class="timetable-toolbar">
           <span class="timetable-summary">{{ timetableSummary() }}<template v-if="selected.timetableStatus"> · 摘要 {{ selected.timetableStatus.digest.slice(0, 12) }}…</template></span>
           <button type="button" :disabled="adopting" @click="adoptTimetable">采纳为配置</button>
         </div>
-        <p class="muted">档案名「{{ selected.timetable.name || "未命名" }}」，上传于 {{ selected.timetableStatus?.uploadedAt || "—" }}。采纳后可在策略中引用下发给其他设备。</p>
+        <p class="muted">「{{ selected.timetable.name || "未命名" }}」· {{ selected.timetableStatus?.uploadedAt || "—" }}。采纳后能在策略里发给别的设备。</p>
         <div v-for="group in timetableEntries()" :key="group.id" class="timetable-group">
           <h4>{{ group.name }}<template v-if="group.isSelected"> · 当前选中</template><small v-if="group.isGlobal"> · 全局</small></h4>
           <div v-if="group.plans.length" class="timetable-plans">
@@ -314,13 +314,13 @@ async function adoptTimetable() {
               <p v-else class="muted">空课表</p>
             </div>
           </div>
-          <p v-else class="muted">该课表群尚未编排课表。</p>
+          <p v-else class="muted">还没排课。</p>
         </div>
       </template>
-      <p v-else class="muted">设备尚未上传课表档案。请确认插件端已开启课表上传，并在设备下一次同步后刷新查看。</p>
+      <p v-else class="muted">设备还没上传课表。</p>
     </article>
-    <article class="block"><h3>能力快照</h3><ul v-if="capabilityEntries().length" class="caps"><li v-for="entry in capabilityEntries()" :key="entry.key"><code>{{ entry.key }}</code><span>{{ entry.value }}</span></li></ul><p v-else class="muted">设备尚未上报能力快照。</p></article>
-    <article class="block"><h3>最近命令</h3><ul v-if="selected.recentCommands.length" class="caps"><li v-for="command in selected.recentCommands" :key="command.id"><code>{{ command.capabilityId }}</code><span>{{ command.state }} · 尝试 {{ command.attemptCount }} · {{ command.createdAt }}</span></li></ul><p v-else class="muted">尚无下发命令记录。</p></article>
+    <article class="block"><h3>能力</h3><ul v-if="capabilityEntries().length" class="caps"><li v-for="entry in capabilityEntries()" :key="entry.key"><code>{{ entry.key }}</code><span>{{ entry.value }}</span></li></ul><p v-else class="muted">还没上报能力。</p></article>
+    <article class="block"><h3>最近命令</h3><ul v-if="selected.recentCommands.length" class="caps"><li v-for="command in selected.recentCommands" :key="command.id"><code>{{ command.capabilityId }}</code><span>{{ command.state }} · 尝试 {{ command.attemptCount }} · {{ command.createdAt }}</span></li></ul><p v-else class="muted">还没有下发记录。</p></article>
   </AppDialog>
   <ConfirmDialog
     v-if="pending"
@@ -335,7 +335,73 @@ async function adoptTimetable() {
 </template>
 
 <style scoped>
+.table-shell { margin-top: 16px; overflow: auto; border-top: 1px solid var(--line-strong); }
+.account, td:first-child { display: grid; gap: 4px; }
+td:first-child strong { font-size: 14px; font-weight: 600; color: var(--ink); }
+td small { color: var(--ink-faint); font-size: 10px; letter-spacing: 0.5px; }
+tbody tr.selected { background: var(--accent-wash); }
+.state { display: inline-flex; align-items: center; gap: 8px; }
+.state::before { content: ""; width: 7px; height: 7px; background: var(--ink-faint); }
+.state[data-online="true"]::before { background: var(--good); }
+.state[data-disabled="true"]::before { background: var(--bad); }
+.row-actions { text-align: right; }
+.row-actions button { min-height: 0; padding: 0 0 3px; border: 0; border-bottom: 1px solid transparent; background: none; color: var(--ink-muted); font-size: 11px; letter-spacing: 0.5px; }
+.row-actions button:hover:not(:disabled) { border-bottom-color: var(--accent); background: none; color: var(--accent); }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
 
-.table-shell{margin-top:14px;overflow:auto;border-radius:var(--radius-md);background:var(--surface-1)}table{width:100%;border-collapse:collapse}th,td{padding:18px 20px;text-align:left}th{color:var(--ink-muted);font-size:9px;letter-spacing:.08em}td{font-size:12px}tbody tr{background:var(--surface-1)}tbody tr:nth-child(odd){background:var(--surface-2)}tbody tr.selected{outline:2px solid var(--ink)}td:first-child{display:grid;gap:3px}td small{color:var(--ink-muted)}.state{display:inline-flex;align-items:center;gap:7px}.state::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--ink-muted)}.state[data-online="true"]::before{background:var(--good)}.state[data-disabled="true"]::before{background:var(--bad)}.row-actions{text-align:right}.row-actions button,.rename button,.actions button,.detail header button{min-height:44px;padding:0 16px;border:0;border-radius:14px;background:var(--surface-2);color:var(--ink);cursor:pointer}.rename button,.actions button:not(.danger){background:var(--ink);color:var(--canvas)}.actions button.danger{color:var(--bad)}button:disabled{opacity:.45;cursor:not-allowed}
-.bulk{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:14px;padding:16px 20px;border-radius:var(--radius-md);background:var(--surface-1)}.bulk div:first-child{display:grid;gap:4px}.bulk span{color:var(--ink-muted);font-size:9px;letter-spacing:.12em}.bulk strong{font-size:14px}.bulk small{color:var(--ink-muted);font-size:10px}.bulk-actions{display:flex;gap:8px}.bulk-actions button{min-height:44px;padding:0 16px;border:0;border-radius:14px;background:var(--surface-2);color:var(--ink);cursor:pointer}.bulk-actions button.danger{color:var(--bad)}.bulk-actions .pick{color:var(--ink-soft)}.detail{margin-top:16px;padding:24px;border-radius:var(--radius-md);background:var(--surface-1)}.detail header{display:flex;justify-content:space-between;align-items:start}.detail header span{color:var(--ink-muted);font-size:9px;letter-spacing:.12em}.detail h2{margin:7px 0 4px;font-size:22px}.detail header small{color:var(--ink-muted)}.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:18px}.detail-grid article,.block{padding:18px;border-radius:16px;background:var(--surface-2)}.detail h3{margin:0 0 12px;font-size:13px}.crash-link{color:var(--accent);text-decoration:none}dl{display:grid;grid-template-columns:auto 1fr;gap:8px 16px;margin:0}dt{color:var(--ink-muted);font-size:10px}dd{margin:0;font-size:12px}.rename{display:flex;align-items:end;gap:12px;margin-top:14px}.rename label{display:grid;gap:7px;flex:1;font-size:10px;color:var(--ink-soft)}.rename input{min-height:44px;padding:0 14px;border:0;border-radius:14px;background:var(--surface-2);color:var(--ink)}.actions{display:flex;gap:10px;margin-top:14px}.timetable-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px}.timetable-toolbar button{min-height:38px;padding:0 14px;border:0;border-radius:12px;background:var(--ink);color:var(--canvas);cursor:pointer}.timetable-summary{color:var(--ink-soft);font-size:11px}.timetable-group{margin-top:12px}.timetable-group h4{margin:0 0 8px;font-size:12px}.timetable-group h4 small{color:var(--ink-muted)}.timetable-plans{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}.timetable-plan{padding:12px 14px;border-radius:12px;background:var(--surface-1)}.timetable-plan h5{margin:0 0 8px;font-size:12px}.timetable-plan h5 small{color:var(--ink-muted)}.lessons{display:grid;gap:4px;margin:0;padding:0;list-style:none}.lessons li{display:flex;align-items:center;gap:8px;font-size:11px}.lesson-index{width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;background:var(--surface-2);color:var(--ink-muted);font-size:9px}.lessons li strong{font-weight:500}.lessons li span:last-child{margin-left:auto;color:var(--ink-soft)}.block{margin-top:14px}.caps{display:grid;gap:6px;margin:0;padding:0;list-style:none}.caps li{display:flex;justify-content:space-between;gap:14px;padding:10px 14px;border-radius:12px;background:var(--surface-1);font-size:11px}.caps code{font-family:ui-monospace,monospace}.caps span{color:var(--ink-soft)}@media(max-width:780px){.detail-grid{grid-template-columns:1fr}.rename{flex-direction:column;align-items:stretch}}
+/* 批量条：RhineLab 微标签 + 发丝框。 */
+.bulk {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 4px;
+  padding: 20px 24px;
+  border: 1px solid var(--line-soft);
+  background: var(--surface-1);
+}
+.bulk div:first-child { display: grid; gap: 6px; }
+.bulk span { color: var(--ink-muted); font-size: 10px; letter-spacing: 1.2px; }
+.bulk strong { font-size: 15px; font-weight: 600; }
+.bulk small { color: var(--ink-faint); font-size: 10px; letter-spacing: 0.6px; }
+.bulk-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.detail header { display: flex; justify-content: space-between; align-items: flex-start; }
+.detail h2 { margin: 8px 0 6px; font-size: 22px; }
+.detail header small { color: var(--ink-muted); }
+.detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 20px; }
+.detail-grid article, .block { padding: 20px 22px; border: 1px solid var(--line-soft); background: var(--surface-1); }
+.block { margin-top: 14px; }
+.detail h3, .block h3 { margin: 0 0 16px; color: var(--ink-muted); font-size: 10px; font-weight: 400; letter-spacing: 1.2px; }
+.crash-link { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent); }
+dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px 18px; margin: 0; }
+dt { color: var(--ink-muted); font-size: 11px; }
+dd { margin: 0; font-size: 13px; word-break: break-all; }
+.rename { display: flex; align-items: flex-end; gap: 14px; margin-top: 18px; }
+.rename label { display: grid; gap: 8px; flex: 1; color: var(--ink-muted); font-size: 11px; letter-spacing: 0.6px; }
+.rename input { width: 100%; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+.timetable-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+.timetable-summary { color: var(--ink-soft); font-size: 12px; }
+.timetable-group { margin-top: 18px; }
+.timetable-group h4 { margin: 0 0 10px; font-size: 13px; font-weight: 600; }
+.timetable-group h4 small { color: var(--ink-muted); font-weight: 400; }
+.timetable-plans { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.timetable-plan { padding: 14px 16px; border: 1px solid var(--line); background: var(--canvas); }
+.timetable-plan h5 { margin: 0 0 10px; font-size: 13px; font-weight: 600; }
+.timetable-plan h5 small { color: var(--ink-muted); font-weight: 400; }
+.lessons { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.lessons li { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+.lesson-index { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; flex: none; border: 1px solid var(--line); color: var(--ink-muted); font-size: 9px; }
+.lessons li strong { font-weight: 500; }
+.lessons li span:last-child { margin-left: auto; color: var(--ink-soft); }
+.caps { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--line-soft); }
+.caps li { display: flex; justify-content: space-between; gap: 16px; padding: 12px 2px; border-bottom: 1px solid var(--line-soft); font-size: 12px; }
+.caps code { font-family: ui-monospace, monospace; color: var(--ink-muted); }
+.caps span { color: var(--ink-soft); text-align: right; }
+@media (max-width: 780px) {
+  .detail-grid { grid-template-columns: 1fr; }
+  .rename { flex-direction: column; align-items: stretch; }
+  .bulk { flex-direction: column; align-items: flex-start; }
+}
 </style>

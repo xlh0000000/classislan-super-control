@@ -1,37 +1,63 @@
+/* 贡献者：威廉
+ * 设计基准：RhineLabUI 实际界面。数值取自 src/style.css 与 src/ui-transitions.ts，
+ * 并用浏览器实测计算样式逐条核对（brand 44px/750、导航 14px/0.7px、.key 19x21、
+ * eyebrow 12px/1.3px、callout-rule 1px #504b41、system-nav gap 43px 等）。
+ * 结论：暖米白纸面 + 近黑文字、全部直角（仅圆点例外）、1px 发丝分隔线、
+ * 深橄榄主填充 #252820（hover #4b4a3b）、暖杏金强调 #946b3c、
+ * 微标签 9-12px 配 0.6-1.7px 字距、浮层 300ms 进 / 200ms 出、内容淡入 150ms、
+ * 指示条 180ms cubic-bezier(0.22,1,0.36,1)。 */
+@import "./fonts.css";
+
 :root {
   color-scheme: light;
-  /* 白为主、蓝为辅：页面底色浅蓝灰、卡片纯白，强调色只用一种蓝。 */
-  --canvas: #eaeef6;
-  --surface-1: #ffffff;
-  --surface-2: #f2f5fa;
-  --surface-3: #e2e9f4;
-  --surface-glass: rgb(255 255 255 / 82%);
-  --ink: #101a2b;
-  --ink-soft: #46536b;
-  --ink-muted: #5f6d86;
-  --accent: #2563eb;
-  --accent-strong: #1d4ed8;
-  --accent-ink: #ffffff;
-  --good: #15803d;
-  --warning: #b45309;
-  --serious: #c0392b;
-  /* 破坏性操作（删除 / 停用 / 解除）统一语义色，避免各页各写一份红色。 */
+  --canvas: #e8e5e1;
+  --surface-1: #edeae3;
+  --surface-2: #e2dccf;
+  --surface-3: #d9d3c6;
+  --surface-glass: rgb(232 229 225 / 88%);
+  --ink: #080a08;
+  --ink-soft: #5a584e;
+  --ink-muted: #888074;
+  --ink-faint: #9a9487;
+  --line: #d0c6b5;
+  --line-soft: #d6d0c4;
+  --line-strong: #bfb7a7;
+  --line-ink: #504b41;
+  --accent: #946b3c;
+  --accent-strong: #7d5830;
+  --accent-ink: #f5f2e9;
+  --accent-wash: #e2dccf;
+  --accent-wash-strong: #e4d5c1;
+  --focus: #a67d48;
+  --good: #565c46;
+  --warning: #a3722f;
+  --serious: #a4493a;
   --bad: var(--serious);
-  --critical: #9b1c2e;
-  /* 控件尺寸刻度：主要操作与表单控件 44px，行内/分段/标签页等紧凑控件 36px。 */
-  --control-h: 44px;
-  --control-h-sm: 36px;
-  /* 控件圆角：按钮与输入框统一 14px，行内紧凑控件 11px。 */
-  --radius-control: 14px;
-  --radius-control-sm: 12px;
-  /* 列表行与内嵌块圆角。 */
-  --radius-row: 14px;
-  --radius-sm: 14px;
-  --radius-md: 22px;
-  --radius-lg: 30px;
+  --critical: #8c2f39;
+  /* 主填充：RhineLab 深橄榄实心按钮。 */
+  --fill: #252820;
+  --fill-hover: #4b4a3b;
+  --fill-ink: #f0eee5;
+  --fill-muted: #bcbfb1;
+  /* 控件刻度：主操作 46px（RhineLab .solid-button），行内紧凑 34px。 */
+  --control-h: 46px;
+  --control-h-sm: 34px;
+  /* RhineLab 全直角，圆角令牌一律归零。 */
+  --radius-control: 0;
+  --radius-control-sm: 0;
+  --radius-row: 0;
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --shadow-pop: 0 26px 95px #63513a20;
+  --t-fast: 150ms;
+  --t-mid: 200ms;
+  --t-base: 250ms;
+  --t-enter: 300ms;
+  --t-roll: 460ms;
   --ease-enter: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-exit: cubic-bezier(0.4, 0, 1, 1);
-  font-family: Inter, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  font-family: "MiSans", "Mi Sans", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   font-synthesis: none;
   color: var(--ink);
   background: var(--canvas);
@@ -39,21 +65,34 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --canvas: #0f1421;
-  --surface-1: #161c29;
-  --surface-2: #1e2536;
-  --surface-3: #283143;
-  --surface-glass: rgb(22 28 41 / 84%);
-  --ink: #e9eef9;
-  --ink-soft: #b4bfd0;
-  --ink-muted: #8a97ab;
-  --accent: #7aa2ff;
-  --accent-strong: #a9c3ff;
-  --accent-ink: #0b0f18;
-  --good: #6ecf9b;
-  --warning: #e2b25c;
-  --serious: #f08a7a;
-  --critical: #f0758f;
+  --canvas: #14150f;
+  --surface-1: #1c1e17;
+  --surface-2: #262920;
+  --surface-3: #2f3227;
+  --surface-glass: rgb(20 21 15 / 88%);
+  --ink: #ece8dc;
+  --ink-soft: #b3ab97;
+  --ink-muted: #8b8472;
+  --ink-faint: #7d7768;
+  --line: #3a3d31;
+  --line-soft: #2f3227;
+  --line-strong: #4a4d3f;
+  --line-ink: #a9a394;
+  --accent: #c79a63;
+  --accent-strong: #d9ac74;
+  --accent-ink: #191712;
+  --accent-wash: #2c281e;
+  --accent-wash-strong: #34301f;
+  --focus: #c79a63;
+  --good: #8fae76;
+  --warning: #d2a05e;
+  --serious: #d98a77;
+  --critical: #d4758b;
+  --fill: #d8cdb4;
+  --fill-hover: #e4dcc2;
+  --fill-ink: #191712;
+  --fill-muted: #6b6552;
+  --shadow-pop: 0 26px 95px #00000055;
 }
 
 * { box-sizing: border-box; }
@@ -62,14 +101,230 @@ body { margin: 0; background: var(--canvas); }
 button, input, select, textarea { font: inherit; }
 button { color: inherit; }
 a { color: inherit; }
-::selection { background: var(--accent); color: var(--accent-ink); }
-:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
-/*
- * 共享控件原语：跨页面复用的外观集中在这里，各页只保留自己的排版差异，
- * 避免同一控件在不同页面出现不同高度、圆角或颜色。
- */
-input[type="checkbox"],
-input[type="radio"] {
+::selection { background: #cbb397; color: #151713; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+button:disabled { cursor: not-allowed; }
+
+/* 微标签：RhineLab 的 eyebrow / panel-label / detail-footnote 一套字号。 */
+.eyebrow, .kicker, .micro {
+  color: var(--ink-muted);
+  font-size: 10px;
+  letter-spacing: 1.2px;
+  line-height: 1.4;
+}
+.micro-sm { color: var(--ink-faint); font-size: 9px; letter-spacing: 0.9px; }
+.muted { color: var(--ink-muted); font-size: 12px; }
+
+/* 分隔线：RhineLab .detail-rule 是 2px 近黑，.callout-rule 是 1px 深灰。 */
+.rule { height: 2px; background: var(--ink); }
+.hairline { height: 1px; background: var(--line-ink); }
+
+/* 按钮默认形态：方形、1px 发丝描边、字距 0.4px 的克制次级按钮。 */
+button {
+  min-height: var(--control-h-sm);
+  padding: 0 13px;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 12px;
+  letter-spacing: 0.4px;
+  cursor: pointer;
+  transition: background var(--t-mid) var(--ease-enter), border-color var(--t-mid) var(--ease-enter), color var(--t-mid) var(--ease-enter), opacity var(--t-mid) var(--ease-enter);
+}
+button:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-wash); color: var(--ink); }
+button:active:not(:disabled) { transform: translateY(1px); }
+button:disabled { opacity: 0.45; }
+
+/* 主操作：RhineLab .solid-button（深橄榄 46px、11px 字、hover 变 #4b4a3b）。 */
+.solid, button.solid {
+  min-height: var(--control-h);
+  padding: 0 18px;
+  border: 0;
+  background: var(--fill);
+  color: var(--fill-ink);
+  font-size: 11px;
+  letter-spacing: 1px;
+}
+.solid:hover:not(:disabled), button.solid:hover:not(:disabled) { border: 0; background: var(--fill-hover); color: var(--fill-ink); }
+.solid:disabled { opacity: 0.5; }
+
+/* 文字按钮：无描边，hover 转暖杏金（RhineLab .back-button:hover）。 */
+.ghost, button.ghost, a.ghost {
+  min-height: var(--control-h-sm);
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 12px;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.ghost:hover:not(:disabled) { border: 0; background: transparent; color: var(--accent); }
+
+/* 下划线文字链接：RhineLab .empty-results button 与列表里的轻动作。 */
+.link {
+  min-height: 0;
+  padding: 0 0 4px;
+  border: 0;
+  border-bottom: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 12px;
+  text-decoration: none;
+  transition: color var(--t-mid) var(--ease-enter), border-color var(--t-mid) var(--ease-enter);
+}
+.link:hover { border-color: var(--accent); background: transparent; color: var(--accent); }
+
+.danger { color: var(--bad); }
+button.danger { border-color: var(--bad); color: var(--bad); }
+button.danger:hover:not(:disabled) { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); color: var(--bad); }
+
+/* 面板：RhineLab 没有厚卡片，靠发丝描边与留白分组。 */
+.panel {
+  padding: 26px 28px;
+  border: 1px solid var(--line-soft);
+  border-radius: 0;
+  background: var(--surface-1);
+}
+.panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 18px; }
+.panel-head h2 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.4px; }
+.panel-head a { color: var(--ink-soft); font-size: 12px; text-decoration: none; transition: color var(--t-mid) var(--ease-enter); }
+.panel-head a:hover { color: var(--accent); }
+
+/* 列表：76px 行高 + 底部发丝线 + 250ms 背景过渡（RhineLab .result-row）。 */
+.list { border-top: 1px solid var(--line-strong); }
+.list > * {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  min-height: 76px;
+  padding: 14px 4px;
+  border-bottom: 1px solid var(--line-soft);
+  transition: background var(--t-base) var(--ease-enter);
+}
+.list > *:hover { background: var(--accent-wash); }
+.row-main { display: grid; gap: 7px; min-width: 0; flex: 1; }
+.row-main strong { font-size: 16px; font-weight: 600; }
+.row-main small { color: var(--ink-muted); font-size: 9px; letter-spacing: 0.7px; }
+.row-actions { display: flex; align-items: center; gap: 14px; flex: none; }
+.row-actions button {
+  min-height: 0;
+  padding: 0 0 3px;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  background: transparent;
+  color: var(--ink-muted);
+  font-size: 11px;
+  letter-spacing: 0.5px;
+}
+.row-actions button:hover:not(:disabled) { border-bottom-color: var(--accent); background: transparent; color: var(--accent); }
+
+/* 表格：RhineLab .result-header 的 9px 大写字距表头 + 发丝行线。 */
+table { width: 100%; border-collapse: collapse; }
+th {
+  padding: 13px 12px;
+  border-block: 1px solid var(--line-strong);
+  color: var(--ink-muted);
+  font-size: 9px;
+  font-weight: 400;
+  letter-spacing: 1px;
+  text-align: left;
+  white-space: nowrap;
+}
+td { padding: 14px 12px; border-bottom: 1px solid var(--line-soft); color: var(--ink-soft); font-size: 13px; }
+tbody tr { transition: background var(--t-base) var(--ease-enter); }
+tbody tr:hover { background: var(--accent-wash); }
+
+/* 状态点：RhineLab 是方形状态块，不是圆点。 */
+.dot { width: 7px; height: 7px; flex: none; background: var(--ink-muted); border-radius: 0; }
+.dot[data-online="true"], .dot.good { background: var(--good); }
+.dot.warning { background: var(--warning); }
+.dot.bad { background: var(--bad); }
+
+/* 标签页：34px 间距 + 2px 滑动指示条（RhineLab .detail-tabs / .tab-indicator）。 */
+.tabs {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 34px;
+  border-bottom: 1px solid var(--line-strong);
+}
+.tabs button {
+  min-height: 0;
+  padding: 0 0 15px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-muted);
+  font-size: 14px;
+  letter-spacing: 0.4px;
+}
+.tabs button:hover:not(:disabled) { border: 0; background: transparent; color: var(--accent); }
+.tabs button.active, .tabs button[data-active="true"] { border: 0; background: transparent; color: var(--ink); }
+.tabs button i { margin-right: 9px; color: var(--ink-faint); font-size: 11px; font-style: normal; letter-spacing: 1px; }
+.tab-indicator {
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: 1px;
+  height: 2px;
+  background: var(--ink);
+  transform-origin: left center;
+  pointer-events: none;
+  transition: transform 180ms var(--ease-enter);
+}
+
+/* 分段选择：方形、激活态深橄榄。 */
+.seg { display: inline-flex; flex: none; gap: 0; border: 1px solid var(--line); background: transparent; }
+.seg button { min-height: var(--control-h-sm); padding: 0 14px; border: 0; border-radius: 0; background: transparent; color: var(--ink-muted); font-size: 12px; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button:hover:not(:disabled) { background: var(--accent-wash); color: var(--ink); }
+.seg button[data-active="true"], .seg button.active { background: var(--fill); color: var(--fill-ink); }
+
+/* 只读 chip：锁定路径、任务目标等。 */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chips span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 11px;
+  letter-spacing: 0.4px;
+}
+
+/* 快捷键徽标（RhineLab .key）。 */
+.key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 19px;
+  height: 21px;
+  border: 1px solid #a6a49c;
+  opacity: 0.6;
+  font-size: 11px;
+  line-height: 1;
+}
+
+/* 表单：方形描边控件，聚焦转暖杏金。 */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+select, textarea {
+  min-height: var(--control-h-sm);
+  padding: 6px 11px;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--surface-1);
+  color: var(--ink);
+  font-size: 13px;
+}
+input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:focus { border-color: var(--accent); outline: none; }
+input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+input[type="checkbox"], input[type="radio"] {
   width: 20px;
   height: 20px;
   margin: 0;
@@ -77,64 +332,35 @@ input[type="radio"] {
   accent-color: var(--accent);
   cursor: pointer;
 }
+.field { display: grid; gap: 8px; }
+.field > span { color: var(--ink-muted); font-size: 11px; letter-spacing: 0.6px; }
 
-/*
- * 控件排版基线：按钮与文本输入的字号、圆角在此统一，避免同一控件在表格
- * （12px）、弹窗（16px）等不同上下文里继承出不同大小。
- */
-button {
-  font-size: 13px;
-  border-radius: var(--radius-control);
-  font-family: inherit;
-}
+/* 页面切换：300ms 进 / 200ms 出，位移 12px / 8px。 */
+.page-enter-active { transition: opacity var(--t-enter) var(--ease-enter), transform var(--t-enter) var(--ease-enter); }
+.page-leave-active { transition: opacity var(--t-mid) var(--ease-exit), transform var(--t-mid) var(--ease-exit); }
+.page-enter-from { opacity: 0; transform: translateY(12px); }
+.page-leave-to { opacity: 0; transform: translateY(8px); }
 
-input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
-select,
-textarea {
-  font-size: 13px;
-}
+/* 入场原语：卡片 / 列表逐项升起，配合 --i 做瀑布。 */
+@keyframes rise-in { from { opacity: 0; transform: translateY(12px); } }
+.rise { animation: rise-in var(--t-enter) var(--ease-enter) backwards; animation-delay: calc(var(--i, 0) * 45ms); }
 
-.muted { color: var(--ink-muted); font-size: 12px; }
+/* 内容淡入：RhineLab 标签页正文 150ms 从 0.35。 */
+@keyframes fade-in { from { opacity: 0.35; } }
+.fade-in { animation: fade-in var(--t-fast) var(--ease-enter); }
 
-/* 次要按钮：取消、关闭、行内操作。所在一层已是 surface-2 时按需覆盖背景。 */
-.ghost {
-  min-height: var(--control-h-sm);
-  padding: 0 12px;
-  border: 0;
-  border-radius: var(--radius-control-sm);
-  background: var(--surface-2);
-  color: var(--ink-soft);
-  font-size: 11px;
-  cursor: pointer;
-  transition: background 160ms var(--ease-enter), color 160ms var(--ease-enter);
-}
-.ghost:hover { color: var(--ink); }
-.ghost:disabled { opacity: 0.45; cursor: not-allowed; }
+/* 状态呼吸：在线指示灯的轻量脉冲。 */
+@keyframes breathe { 50% { opacity: 0.35; } }
+.breathe { animation: breathe 2.6s var(--ease-enter) infinite; }
 
-.dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--ink-muted); }
-.dot[data-online="true"] { background: var(--good); }
+/* 箭头位移：RhineLab .read-file > span:hover 的 translateX(9px)。 */
+.arrow { display: inline-block; transition: transform var(--t-enter) var(--ease-enter); }
+a:hover > .arrow, button:hover > .arrow { transform: translateX(6px); }
 
-/* 分段选择：视图切换、连接方式、设置覆盖等一次性选择。 */
-.seg { display: inline-flex; flex: none; gap: 4px; padding: 4px; border-radius: 12px; background: var(--surface-1); }
-.seg button { min-height: var(--control-h-sm); padding: 0 13px; border: 0; border-radius: 9px; background: transparent; color: var(--ink-soft); font-size: 11px; cursor: pointer; }
-.seg button:hover { color: var(--ink); }
-.seg button[data-active="true"] { background: var(--ink); color: var(--canvas); font-weight: 600; }
-
-/* 标签页：页面内分区切换。 */
-.tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.tabs button { min-height: var(--control-h-sm); padding: 0 16px; border: 0; border-radius: 12px; background: var(--surface-1); color: var(--ink-soft); font-size: 12px; cursor: pointer; transition: background 160ms var(--ease-enter), color 160ms var(--ease-enter); }
-.tabs button:hover { background: var(--surface-2); color: var(--ink); }
-.tabs button.active,
-.tabs button[data-active="true"] { background: var(--ink); color: var(--canvas); }
-
-/* 只读 chip 列表：锁定路径、任务目标等。 */
-.chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.chips span { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 12px; background: var(--surface-2); color: var(--ink-soft); font-size: 11px; }
-
-.page-enter-active,
-.page-leave-active { transition: opacity 200ms var(--ease-enter), transform 300ms var(--ease-enter); }
-.page-enter-from { opacity: 0; transform: translateY(10px); }
-.page-leave-to { opacity: 0; transform: translateY(6px); }
+* { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: var(--line); }
+::-webkit-scrollbar-track { background: transparent; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
@@ -142,5 +368,6 @@ textarea {
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
   }
 }

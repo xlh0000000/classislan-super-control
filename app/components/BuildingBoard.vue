@@ -162,7 +162,7 @@ async function confirmDelete() {
           @keydown.esc="cancelCreate"
           @blur="commitCreate"
         >
-        <button v-else type="button" class="edit" title="新建楼栋" @click="startCreate('buildings')">＋ 楼栋</button>
+        <button v-else type="button" class="add" title="新建楼栋" @click="startCreate('buildings')">＋ 楼栋</button>
       </div>
       <div class="board-tools">
         <template v-if="active">
@@ -173,7 +173,7 @@ async function confirmDelete() {
       </div>
     </header>
 
-    <EmptyState v-if="!buildings.length" title="还没有楼栋" description="创建楼栋、楼层与教室，再把设备放进教室。">
+    <EmptyState v-if="!buildings.length" title="还没有楼栋">
       <template #action><button type="button" @click="startCreate('buildings')">新建楼栋</button></template>
     </EmptyState>
 
@@ -313,56 +313,104 @@ async function confirmDelete() {
 </template>
 
 <style scoped>
-.board { display: grid; gap: 12px; }
-.board-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
-.tabs button.edit { background: var(--surface-2); color: var(--ink); }
-.board-tools { display: flex; align-items: center; gap: 10px; }
-
-.legend { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--ink-muted); font-size: 10px; }
-.legend .dot { margin-left: 6px; }
-.inline { min-height: 36px; max-width: 100%; padding: 0 12px; border: 0; border-radius: 12px; background: var(--surface-3); color: var(--ink); font-size: 12px; }
-.add { min-height: 44px; padding: 0 14px; border: 1px dashed var(--ink-muted); border-radius: 14px; background: none; color: var(--ink-soft); font-size: 11px; cursor: pointer; transition: background 140ms var(--ease-enter); }
-.add:hover { background: var(--surface-2); color: var(--ink); }
-.add-input { min-width: 132px; }
-.floor-add { justify-self: start; }
-.floors { display: grid; gap: 10px; }
-.floor { display: grid; grid-template-columns: 168px minmax(0, 1fr); gap: 12px; padding: 14px; border-radius: var(--radius-md); background: var(--surface-1); }
-.floor-label { display: flex; align-items: center; gap: 10px; align-self: start; padding-top: 6px; flex-wrap: wrap; }
-
-.floor-label strong { font-size: 13px; }
-.floor-label small { color: var(--ink-muted); font-size: 10px; }
-.floor-tools { display: flex; gap: 8px; }
-.floor-tools button { padding: 0; border: 0; background: none; color: var(--ink-muted); font-size: 10px; cursor: pointer; }
-.floor-tools button:hover { color: var(--ink); }
-.rooms { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
+.board { display: grid; gap: 24px; }
+.board-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap; }
+/* 楼栋切换沿用 RhineLab 标签栏：34px 间距 + 发丝底线。 */
+.tabs { flex: 1; min-width: 260px; gap: 26px; }
+.tabs button { min-height: 0; font-size: 15px; }
+.tabs button.add { color: var(--ink-muted); font-size: 12px; letter-spacing: 0.6px; }
+.tabs button.add:hover:not(:disabled) { color: var(--accent); }
+.board-tools { display: flex; align-items: center; gap: 14px; }
+.legend { display: flex; align-items: center; gap: 7px; margin: 0; color: var(--ink-muted); font-size: 10px; letter-spacing: 0.6px; }
+.legend .dot { margin-left: 9px; }
+.inline {
+  min-height: var(--control-h-sm);
+  max-width: 100%;
+  padding: 0 11px;
+  border: 1px solid var(--accent);
+  background: var(--surface-1);
+  color: var(--ink);
+  font-size: 13px;
+}
+.floors { display: grid; gap: 12px; }
+/* 楼层：一条发丝框，左侧楼层信息、右侧教室矩阵。 */
+.floor {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  gap: 20px;
+  padding: 18px 22px;
+  border: 1px solid var(--line-soft);
+  background: var(--surface-1);
+}
+.floor-label { display: flex; align-items: center; gap: 10px; align-self: start; flex-wrap: wrap; }
+.floor-label strong { font-size: 15px; font-weight: 600; }
+.floor-label small { color: var(--ink-muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+.floor-tools { display: flex; gap: 12px; width: calc(100% - 30px); }
+.rooms { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; }
 .room-wrap { position: relative; }
-.room { display: grid; gap: 6px; align-content: start; min-width: 148px; max-width: 248px; padding: 14px 30px 12px 14px; border-radius: var(--radius-row); background: var(--surface-2); transition: background 160ms var(--ease-enter), transform 160ms var(--ease-enter); }
-.room:hover { transform: translateY(-2px); }
-.room-open { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 0; border: 0; background: none; color: inherit; text-align: left; cursor: pointer; }
-.room-open:hover .room-name { text-decoration: underline; }
-.room-wrap[data-selected="true"] .room { background: var(--ink); }
-.room-wrap[data-selected="true"] .room-name, .room-wrap[data-selected="true"] .room small { color: var(--canvas); }
-.room-wrap[data-partial="true"] .room { outline: 1px dashed var(--ink-muted); }
-.pick { position: absolute; top: 8px; right: 8px; z-index: 1; display: flex; padding: 5px; border-radius: var(--radius-control-sm); background: var(--surface-1); box-shadow: 0 1px 4px rgb(0 0 0/.18); }
-.pick:hover { background: var(--surface-3); }
-.room-wrap[data-selected="true"] .pick { background: var(--accent); }
-.room-wrap[data-partial="true"] .pick { background: var(--warning); }
-.room-name { font-size: 13px; font-weight: 650; }
-.room-devices { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-height: 12px; }
-.chip { display: inline-flex; align-items: center; gap: 5px; min-width: 0; padding: 3px 8px; border: 0; border-radius: 8px; background: var(--surface-3); color: var(--ink); font-size: 10px; cursor: pointer; transition: transform 140ms var(--ease-enter); }
-.chip:hover { transform: translateY(-1px); }
+.room {
+  display: grid;
+  gap: 9px;
+  align-content: start;
+  min-width: 158px;
+  max-width: 252px;
+  padding: 14px 36px 14px 14px;
+  border: 1px solid var(--line);
+  background: transparent;
+  transition: background var(--t-base) var(--ease-enter), border-color var(--t-base) var(--ease-enter);
+}
+.room:hover { border-color: var(--accent); background: var(--accent-wash); }
+.room-open { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-height: 0; padding: 0; border: 0; background: none; color: inherit; text-align: left; }
+.room-open:hover { border: 0; background: none; }
+.room-open:hover .room-name { color: var(--accent); }
+.room-name { font-size: 14px; font-weight: 600; letter-spacing: 0.2px; }
+.room-wrap[data-selected="true"] .room { border-color: var(--fill); background: var(--fill); }
+.room-wrap[data-selected="true"] .room-name,
+.room-wrap[data-selected="true"] .room small { color: var(--fill-ink); }
+.room-wrap[data-selected="true"] .room-open:hover .room-name { color: var(--fill-ink); }
+.room-wrap[data-partial="true"] .room { border-color: var(--warning); }
+.pick { position: absolute; top: 12px; right: 12px; z-index: 1; display: flex; padding: 0; background: transparent; }
+.pick input { width: 18px; height: 18px; }
+.room-devices { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; min-height: 12px; }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 10px;
+  letter-spacing: 0.3px;
+  transition: border-color var(--t-mid) var(--ease-enter), background var(--t-mid) var(--ease-enter), color var(--t-mid) var(--ease-enter);
+}
+.chip:hover { border-color: var(--accent); background: var(--accent-wash); color: var(--ink); }
 .chip-name { max-width: 104px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chip.more { color: var(--ink-soft); }
-.chip.add-chip { background: none; border: 1px dashed var(--ink-muted); color: var(--ink-muted); }
-.chip.add-chip:hover { color: var(--ink); }
-.room-wrap[data-selected="true"] .chip.add-chip { border-color: var(--canvas); color: var(--canvas); }
-.room-wrap[data-selected="true"] .chip { background: var(--ink-muted); color: var(--canvas); }
-.room small { color: var(--ink-muted); font-size: 10px; }
-.room-tools { display: flex; gap: 10px; opacity: 0; transition: opacity 140ms var(--ease-enter); }
+.chip.more { color: var(--ink-muted); }
+.chip.add-chip { border-style: dashed; color: var(--ink-muted); }
+.room-wrap[data-selected="true"] .chip { border-color: #5c6152; color: var(--fill-ink); }
+.room-wrap[data-selected="true"] .chip:hover { border-color: var(--fill-ink); background: #4b4a3b; color: var(--fill-ink); }
+.room small { color: var(--ink-muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+.room-tools { display: flex; gap: 12px; opacity: 0; transition: opacity var(--t-mid) var(--ease-enter); }
 .room-wrap:hover .room-tools, .room-wrap:focus-within .room-tools { opacity: 1; }
-.room-tools button { padding: 0; border: 0; background: none; color: var(--ink-muted); font-size: 10px; cursor: pointer; }
-.room-tools button:hover { color: var(--ink); }
-.room-wrap[data-selected="true"] .room-tools button { color: var(--canvas); }
-.floor-hint { margin: 0; color: var(--ink-muted); font-size: 11px; }
-@media (max-width: 700px) { .floor { grid-template-columns: 1fr; } }
+.floor-tools button,
+.room-tools button {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-muted);
+  font-size: 10px;
+  letter-spacing: 0.5px;
+}
+.floor-tools button:hover:not(:disabled),
+.room-tools button:hover:not(:disabled) { border: 0; background: none; color: var(--accent); }
+.room-wrap[data-selected="true"] .room-tools button { color: var(--fill-muted); }
+.room-wrap[data-selected="true"] .room-tools button:hover { color: var(--fill-ink); }
+@media (max-width: 760px) {
+  .floor { grid-template-columns: 1fr; gap: 14px; padding: 16px; }
+  .floor-tools { width: auto; }
+}
 </style>

@@ -121,22 +121,157 @@ onMounted(() => { if (useRoute().query.new) showEditor.value = true; });
 </script>
 
 <template>
-  <PageHeading kicker="OPERATIONS / 执行编排" title="任务" description="立即、定时或分批灰度下发类型化命令。命令有生效时间、过期时间、前置条件和幂等标识。"><button type="button" @click="showEditor = !showEditor">创建任务</button></PageHeading>
-  <AppDialog v-if="showEditor" title="创建任务" kicker="OPERATIONS / 立即下发" width="880px" @close="showEditor = false">
-    <form id="task-editor" class="editor" @submit.prevent="createTask"><label>名称<input v-model="form.name" required></label><label>能力<select v-model="form.capabilityId"><option v-for="def in capabilityDefs" :key="def.id" :value="def.id">{{ def.risk ? `${def.label}（高风险）` : def.label }}</option></select></label><label>TTL 分钟<input v-model.number="form.ttlMinutes" min="1" max="10080" type="number"></label><label>下发模式<select v-model="form.mode"><option value="all">全部</option><option value="fixed">固定批次</option><option value="percent">百分比灰度</option></select></label><label v-if="form.mode === 'fixed'">每批设备数<input v-model.number="form.batchSize" min="1" max="500" type="number"></label><label v-if="form.mode === 'percent'">灰度百分比<input v-model.number="form.percent" min="1" max="100" type="number"></label><label>失败阈值 %<input v-model.number="form.failureThresholdPercent" min="0" max="100" type="number"></label><label>最大并发（0 不限）<input v-model.number="form.maxConcurrency" min="0" max="1000" type="number"></label><fieldset class="target"><legend>目标</legend><strong>{{ targetSummary }}</strong><small>{{ targetCount }} 台设备</small><button type="button" class="ghost" @click="showTargets = true">选择目标</button></fieldset><fieldset class="wide payload"><legend>命令内容</legend><p v-if="currentCapability.risk" class="risk">高风险：会重启或退出设备上的 ClassIsland。</p><p v-else-if="!visibleFields.length" class="static">该能力没有参数，直接下发即可。</p><template v-for="field in visibleFields" :key="field.key"><label v-if="field.kind === 'textarea'">{{ field.label }}<textarea v-model="values[field.key]" rows="3" /></label><label v-else-if="field.kind === 'select'">{{ field.label }}<select v-model="values[field.key]"><option v-for="option in field.options" :key="option[0]" :value="option[0]">{{ option[1] }}</option></select></label><label v-else-if="field.kind === 'color'">{{ field.label }}<span class="color-row"><input v-model="values[field.key]" type="color"><input v-model="values[field.key]" maxlength="7" placeholder="留空"></span></label><label v-else>{{ field.label }}<input v-model="values[field.key]" :placeholder="field.placeholder"></label></template><details class="advanced"><summary>高级：直接编辑 Payload JSON</summary><textarea v-model="form.payload" rows="6" /></details></fieldset></form>
+  <PageHeading kicker="把操作发给一批设备" title="任务">
+    <button type="button" class="solid" @click="showEditor = true">创建任务</button>
+  </PageHeading>
+
+  <AppDialog v-if="showEditor" title="创建任务" kicker="立即下发" width="880px" @close="showEditor = false">
+    <form id="task-editor" class="editor" @submit.prevent="createTask">
+      <label>名称<input v-model="form.name" required></label>
+      <label>能力<select v-model="form.capabilityId"><option v-for="def in capabilityDefs" :key="def.id" :value="def.id">{{ def.risk ? `${def.label}（高风险）` : def.label }}</option></select></label>
+      <label>有效时间（分钟）<input v-model.number="form.ttlMinutes" min="1" max="10080" type="number"></label>
+      <label>下发方式<select v-model="form.mode"><option value="all">全部</option><option value="fixed">固定批次</option><option value="percent">百分比灰度</option></select></label>
+      <label v-if="form.mode === 'fixed'">每批设备数<input v-model.number="form.batchSize" min="1" max="500" type="number"></label>
+      <label v-if="form.mode === 'percent'">灰度百分比<input v-model.number="form.percent" min="1" max="100" type="number"></label>
+      <label>失败阈值 %<input v-model.number="form.failureThresholdPercent" min="0" max="100" type="number"></label>
+      <label>最大并发（0 不限）<input v-model.number="form.maxConcurrency" min="0" max="1000" type="number"></label>
+
+      <fieldset class="wide target">
+        <legend>目标</legend>
+        <div class="target-head">
+          <span><strong>{{ targetSummary }}</strong> · {{ targetCount }} 台设备</span>
+          <button type="button" class="ghost" @click="showTargets = true">选择目标</button>
+        </div>
+      </fieldset>
+
+      <fieldset class="wide payload">
+        <legend>命令内容</legend>
+        <p v-if="currentCapability.risk" class="risk">高风险：会重启或退出设备上的 ClassIsland。</p>
+        <p v-else-if="!visibleFields.length" class="static">该能力没有参数，直接下发即可。</p>
+        <template v-for="field in visibleFields" :key="field.key">
+          <label v-if="field.kind === 'textarea'">{{ field.label }}<textarea v-model="values[field.key]" rows="3" /></label>
+          <label v-else-if="field.kind === 'select'">{{ field.label }}<select v-model="values[field.key]"><option v-for="option in field.options" :key="option[0]" :value="option[0]">{{ option[1] }}</option></select></label>
+          <label v-else-if="field.kind === 'color'">{{ field.label }}<span class="color-row"><input v-model="values[field.key]" type="color"><input v-model="values[field.key]" maxlength="7" placeholder="留空"></span></label>
+          <label v-else>{{ field.label }}<input v-model="values[field.key]" :placeholder="field.placeholder"></label>
+        </template>
+        <details class="advanced">
+          <summary>高级：直接编辑 Payload JSON</summary>
+          <textarea v-model="form.payload" rows="6" />
+        </details>
+      </fieldset>
+    </form>
     <template #footer>
       <button type="button" class="ghost" @click="showEditor = false">取消</button>
       <button type="submit" form="task-editor" :disabled="busy || !targetReady">{{ busy ? '下发中…' : '创建并下发' }}</button>
     </template>
   </AppDialog>
-  <section class="state-strip"><div v-for="state in states" :key="state"><span>{{ state }}</span><strong>{{ countState(state) }}</strong></div></section>
-  <section v-if="tasks.length" class="tasks"><article v-for="task in tasks" :key="task.id" :class="{ selected: task.id === selectedId }"><div><strong>{{ task.name }}</strong><small>{{ task.capabilityId }} · {{ task.state }} · {{ task.mode }}</small><small>{{ statOf(task) }}</small></div><div class="actions"><button v-if="task.state === 'running' || task.state === 'scheduled'" @click="taskAction(task.id,'pause')">暂停</button><button v-if="task.state === 'paused'" @click="taskAction(task.id,'resume')">继续</button><button @click="taskAction(task.id,'cancel')">取消</button><button @click="openTask(task.id)">详情</button></div></article></section><EmptyState v-else title="尚无任务" description="选择能力、目标范围、批次和失败阈值。高风险操作会写入审计。" />
-  <TargetPickerDialog v-if="showTargets" @close="showTargets = false" />
-  <AppDialog v-if="selectedId" title="任务详情"
- kicker="OPERATIONS / 执行详情" width="940px" @close="closeTask"><p v-if="detailBusy">加载中…</p><template v-else-if="detail"><p v-if="detail.task.lastError" class="warn">{{ detail.task.lastError }}</p><div class="detail-grid"><div><span>状态</span><strong>{{ detail.task.state }}</strong></div><div><span>目标设备</span><strong>{{ detail.stats.total }}</strong></div><div><span>成功</span><strong>{{ detail.stats.succeeded }}</strong></div><div><span>失败</span><strong>{{ detail.stats.failed }}</strong></div><div><span>过期</span><strong>{{ detail.stats.expired }}</strong></div><div><span>取消</span><strong>{{ detail.stats.cancelled }}</strong></div><div><span>撤回中</span><strong>{{ detail.stats.cancelling }}</strong></div><div><span>进行中</span><strong>{{ detail.stats.active }}</strong></div></div><h3>批次</h3><div class="chips"><span v-for="batch in detail.batches" :key="batch.id">第 {{ batch.batchIndex + 1 }} 批 · {{ batch.state }} · {{ batch.deviceCount }} 台</span><span v-if="!detail.batches.length">无批次记录</span></div><h3>目标执行（{{ detail.commands.total }}）</h3><table><thead><tr><th>设备</th><th>状态</th><th>尝试</th><th>确认时间</th><th>结果 / 错误</th></tr></thead><tbody><tr v-for="command in detail.commands.items" :key="command.id"><td>{{ command.deviceName }}</td><td>{{ command.state }}</td><td>{{ command.attemptCount }}/{{ command.maxAttempts }}</td><td>{{ command.acknowledgedAt || '—' }}</td><td class="result">{{ command.lastError || (command.result ? JSON.stringify(command.result) : '—') }}</td></tr></tbody></table><h3>审计时间线</h3><ul class="timeline"><li v-for="entry in detail.timeline" :key="entry.sequence"><small>{{ entry.createdAt }}</small><span>{{ entry.summary }}</span></li><li v-if="!detail.timeline.length">暂无事件</li></ul></template></AppDialog>
-</template>
 
-<style scoped>
-.editor { display: grid; grid-template-columns: 1fr 1fr 140px; gap: 12px; margin-top: 14px; padding: 24px; border-radius: var(--radius-md); background: var(--surface-1); }.editor label,.editor fieldset { display: grid; gap: 7px; font-size: 10px; color: var(--ink-soft); }.editor fieldset,.editor .wide { grid-column: 1/-1; }.editor input,.editor select,.editor textarea { padding: 12px; border: 0; border-radius: 14px; background: var(--surface-2); color: var(--ink); }.editor fieldset select{max-width:420px}.editor .payload .static,.editor .payload .risk{margin:0;font-size:11px;color:var(--ink-soft)}.editor .payload .risk{color:var(--bad)}.editor .color-row{display:flex;gap:8px;align-items:center}.editor .color-row input[type=color]{width:58px;padding:4px;flex:none}.editor .advanced{display:grid;gap:8px;margin-top:4px}.editor .advanced summary{cursor:pointer;color:var(--ink-muted);font-size:10px;letter-spacing:.08em}.editor button { min-height:44px;border:0;border-radius:14px;background:var(--ink);color:var(--canvas)}.editor button:disabled{opacity:.5}
-.editor .target .ghost{justify-self:start;min-height:var(--control-h-sm);padding:0 12px;border-radius:var(--radius-control-sm);background:var(--surface-1);color:var(--ink-soft)}.state-strip { display:grid;grid-template-columns:repeat(5,1fr);gap:9px;margin:14px 0}.state-strip div{min-height:92px;display:flex;flex-direction:column;justify-content:space-between;padding:16px;border-radius:18px;background:var(--surface-2)}.state-strip span{color:var(--ink-muted);font-size:9px}.state-strip strong{font-size:27px}.tasks{display:grid;gap:8px}.tasks article{display:flex;align-items:center;justify-content:space-between;padding:17px;border-radius:var(--radius-row);background:var(--surface-1)}.tasks article.selected{background:var(--surface-2)}.tasks article>div:first-child{display:grid;gap:4px}.tasks small{color:var(--ink-muted)}.actions{display:flex;gap:6px}.actions button{min-height:var(--control-h-sm);border:0;border-radius:12px;background:var(--surface-2);color:var(--ink);cursor:pointer}.detail{margin-top:18px;padding:24px;border-radius:var(--radius-md);background:var(--surface-1)}.detail header{display:flex;align-items:center;justify-content:space-between}.detail header button{min-height:36px;border:0;border-radius:12px;background:var(--surface-2);color:var(--ink);cursor:pointer}.detail h3{margin:22px 0 10px;font-size:12px;color:var(--ink-soft)}.detail-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-top:16px}.detail-grid div{display:flex;flex-direction:column;gap:6px;padding:14px;border-radius:16px;background:var(--surface-2)}.detail-grid span{font-size:9px;color:var(--ink-muted)}.detail-grid strong{font-size:20px}.warn{margin-top:12px;padding:10px 14px;border-radius:12px;background:var(--surface-2);color:var(--ink)}.detail table{width:100%;border-collapse:collapse;font-size:11px}.detail th{text-align:left;padding:8px 6px;color:var(--ink-muted);font-weight:500}.detail td{padding:9px 6px;border-top:1px solid var(--surface-2);vertical-align:top}.detail td.result{max-width:360px;word-break:break-all;color:var(--ink-soft)}.timeline{list-style:none;margin:0;padding:0;display:grid;gap:7px}.timeline li{display:grid;gap:3px;padding:10px 12px;border-radius:12px;background:var(--surface-2);font-size:11px}.timeline small{color:var(--ink-muted)}@media(max-width:800px){.state-strip{grid-template-columns:repeat(3,1fr)}.editor{grid-template-columns:1fr}.editor fieldset,.editor .wide{grid-column:auto}.detail-grid{grid-template-columns:repeat(2,1fr)}}
+  <section class="state-strip">
+    <div v-for="state in states" :key="state"><span>{{ state }}</span><strong>{{ countState(state) }}</strong></div>
+  </section>
+
+  <section v-if="tasks.length" class="list tasks">
+    <article v-for="task in tasks" :key="task.id" :class="{ selected: task.id === selectedId }">
+      <div class="row-main">
+        <strong>{{ task.name }}</strong>
+        <small>{{ task.capabilityId }} · {{ task.state }} · {{ task.mode }}</small>
+        <small>{{ statOf(task) }}</small>
+      </div>
+      <div class="row-actions">
+        <button v-if="task.state === 'running' || task.state === 'scheduled'" type="button" @click="taskAction(task.id,'pause')">暂停</button>
+        <button v-if="task.state === 'paused'" type="button" @click="taskAction(task.id,'resume')">继续</button>
+        <button type="button" @click="taskAction(task.id,'cancel')">取消</button>
+        <button type="button" @click="openTask(task.id)">详情</button>
+      </div>
+    </article>
+  </section>
+  <EmptyState v-else title="还没有任务" />
+  <TargetPickerDialog v-if="showTargets" @close="showTargets = false" />
+
+  <AppDialog v-if="selectedId" title="任务详情" kicker="执行详情" width="940px" @close="closeTask">
+    <p v-if="detailBusy">加载中…</p>
+    <template v-else-if="detail">
+      <p v-if="detail.task.lastError" class="warn">{{ detail.task.lastError }}</p>
+      <dl class="meta">
+        <div><dt>状态</dt><dd>{{ detail.task.state }}</dd></div>
+        <div><dt>目标设备</dt><dd>{{ detail.stats.total }}</dd></div>
+        <div><dt>成功</dt><dd>{{ detail.stats.succeeded }}</dd></div>
+        <div><dt>失败</dt><dd>{{ detail.stats.failed }}</dd></div>
+        <div><dt>过期</dt><dd>{{ detail.stats.expired }}</dd></div>
+        <div><dt>取消</dt><dd>{{ detail.stats.cancelled }}</dd></div>
+        <div><dt>撤回中</dt><dd>{{ detail.stats.cancelling }}</dd></div>
+        <div><dt>进行中</dt><dd>{{ detail.stats.active }}</dd></div>
+      </dl>
+      <h3>批次</h3>
+      <div class="chips">
+        <span v-for="batch in detail.batches" :key="batch.id">第 {{ batch.batchIndex + 1 }} 批 · {{ batch.state }} · {{ batch.deviceCount }} 台</span>
+        <span v-if="!detail.batches.length">无批次记录</span>
+      </div>
+      <h3>目标执行（{{ detail.commands.total }}）</h3>
+      <table>
+        <thead><tr><th>设备</th><th>状态</th><th>尝试</th><th>确认时间</th><th>结果 / 错误</th></tr></thead>
+        <tbody>
+          <tr v-for="command in detail.commands.items" :key="command.id">
+            <td>{{ command.deviceName }}</td>
+            <td>{{ command.state }}</td>
+            <td>{{ command.attemptCount }}/{{ command.maxAttempts }}</td>
+            <td class="time">{{ command.acknowledgedAt || '—' }}</td>
+            <td class="result">{{ command.lastError || (command.result ? JSON.stringify(command.result) : '—') }}</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3>审计时间线</h3>
+      <ul class="timeline">
+        <li v-for="entry in detail.timeline" :key="entry.sequence"><small>{{ entry.createdAt }}</small><span>{{ entry.summary }}</span></li>
+        <li v-if="!detail.timeline.length">暂无事件</li>
+      </ul>
+    </template>
+  </AppDialog>
+</template><style scoped>
+.editor { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.editor > label { display: grid; gap: 8px; color: var(--ink-muted); font-size: 11px; letter-spacing: 0.6px; }
+.editor input, .editor select, .editor textarea { width: 100%; }
+.editor textarea { padding: 12px 14px; line-height: 1.7; resize: vertical; font-family: ui-monospace, monospace; font-size: 12px; }
+.wide { grid-column: 1 / -1; }
+fieldset { margin: 0; padding: 22px 24px; border: 1px solid var(--line-soft); }
+legend { padding: 0 10px; color: var(--ink-muted); font-size: 10px; letter-spacing: 1.2px; }
+.target-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.target-head span { color: var(--ink-soft); font-size: 12px; }
+.target-head strong { color: var(--ink); font-weight: 600; }
+.risk { margin: 0 0 16px; color: var(--bad); font-size: 12px; }
+.static { margin: 0; color: var(--ink-faint); font-size: 11px; }
+.color-row { display: flex; gap: 10px; }
+.color-row input:first-child { width: 72px; padding: 4px; }
+.advanced { margin-top: 16px; }
+.advanced summary { cursor: pointer; color: var(--ink-soft); font-size: 12px; }
+.advanced textarea { margin-top: 12px; }
+
+/* 状态计数：RhineLab 微标签 + 大号数字。 */
+.state-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0; border-top: 1px solid var(--line-strong); border-bottom: 1px solid var(--line-strong); }
+.state-strip div { display: grid; gap: 8px; padding: 18px 20px; border-right: 1px solid var(--line-soft); }
+.state-strip div:last-child { border-right: 0; }
+.state-strip span { color: var(--ink-muted); font-size: 10px; letter-spacing: 1.2px; }
+.state-strip strong { font-size: 30px; font-weight: 600; letter-spacing: -1px; font-variant-numeric: tabular-nums; }
+.tasks { margin-top: 22px; }
+.tasks article { gap: 20px; }
+.tasks article.selected { background: var(--accent-wash); }
+.tasks .row-main { gap: 6px; }
+.tasks .row-main strong { font-size: 15px; }
+.warn { margin: 0 0 18px; color: var(--bad); font-size: 12px; }
+/* 详情：RhineLab .metadata 的说明 / 取值对照。 */
+.meta { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px 28px; margin: 0 0 8px; }
+.meta dt { color: var(--ink-muted); font-size: 11px; letter-spacing: 0.8px; }
+.meta dd { margin: 8px 0 0; font-size: 20px; font-weight: 600; letter-spacing: -0.5px; font-variant-numeric: tabular-nums; }
+h3 { margin: 28px 0 14px; color: var(--ink-muted); font-size: 10px; font-weight: 400; letter-spacing: 1.2px; }
+.chips { margin-bottom: 4px; }
+.time { color: var(--ink-muted); font-size: 11px; }
+.result { font-family: ui-monospace, monospace; font-size: 11px; word-break: break-all; }
+.timeline { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--line-soft); }
+.timeline li { display: grid; gap: 6px; padding: 14px 2px; border-bottom: 1px solid var(--line-soft); }
+.timeline small { color: var(--ink-faint); font-size: 10px; letter-spacing: 0.6px; }
+.timeline span { font-size: 13px; }
+@media (max-width: 900px) {
+  .editor { grid-template-columns: 1fr; }
+  .meta { grid-template-columns: repeat(2, 1fr); }
+}
 </style>

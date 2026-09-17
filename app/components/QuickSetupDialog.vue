@@ -80,19 +80,19 @@ function apply() {
 </script>
 
 <template>
-  <AppDialog title="快装课表" kicker="QUICK SETUP / 从表格导入" width="880px" @close="emit('close')">
+  <AppDialog title="快装课表" kicker="从表格粘贴导入" width="880px" @close="emit('close')">
     <textarea
       v-model="text"
       class="paste"
       rows="6"
       spellcheck="false"
-      placeholder="从 Excel 框选课表复制后粘贴到这里，也可以把 CSV / TXT 拖进来…"
+      placeholder="从 Excel 框选复制后粘贴到这里，也可以拖进 CSV / TXT…"
       @drop.prevent="readFile($event.dataTransfer?.files?.[0])"
       @dragover.prevent
     />
     <div class="bar">
       <button type="button" class="ghost" @click="fileInput?.click()">上传 CSV / TXT</button>
-      <span class="muted">首行星期、首列节次，单元格可写「语文(张老师)」</span>
+      <span class="muted">首行星期、首列节次</span>
       <span class="spacer" />
       <div class="seg">
         <button type="button" :data-active="mode === 'overwrite'" @click="mode = 'overwrite'">覆盖</button>
@@ -144,17 +144,20 @@ function apply() {
 </template>
 
 <style scoped>
-.paste{width:100%;min-height:132px;padding:14px 16px;border:0;border-radius:var(--radius-row);background:var(--surface-2);color:var(--ink);font:12px/1.7 ui-monospace,SFMono-Regular,Menlo,monospace;resize:vertical}
+.paste{width:100%;min-height:132px;padding:14px 16px;border:1px solid var(--line);background:var(--surface-1);color:var(--ink);font:12px/1.7 ui-monospace,SFMono-Regular,Menlo,monospace;resize:vertical;transition:border-color var(--t-mid) var(--ease-enter)}
+.paste:focus{border-color:var(--accent)}
 .paste::placeholder{color:var(--ink-muted)}
 .bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:12px}
+.bar .muted{font-size:11px}
 .spacer{flex:1}
-.note{margin:12px 0 0;padding:10px 14px;border-radius:12px;background:var(--surface-2);color:var(--ink-soft);font-size:11px;line-height:1.7}
-.preview-shell{margin-top:12px;max-height:304px;overflow:auto;border-radius:var(--radius-row);background:var(--surface-2)}
-.preview{width:100%;border-collapse:separate;border-spacing:6px;padding:6px}
-.preview th,.preview td{padding:0}
-.preview .corner{min-width:76px;padding:8px;border-radius:10px;background:var(--surface-1);color:var(--ink-soft);font-size:10px;font-weight:400;text-align:left;white-space:nowrap}
-.preview thead select{width:100%;min-height:var(--control-h-sm);padding:0 8px;border:0;border-radius:9px;background:var(--surface-1);color:var(--ink);font-size:11px}
-.preview td{padding:8px 10px;border-radius:10px;background:var(--surface-1);font-size:11px;white-space:nowrap}
+.note{margin:12px 0 0;padding:12px 14px;border-left:2px solid var(--accent);background:var(--surface-2);color:var(--ink-soft);font-size:11px;line-height:1.7}
+.preview-shell{margin-top:12px;max-height:304px;overflow:auto;border:1px solid var(--line);background:var(--surface-1)}
+.preview{width:100%;border-collapse:collapse}
+.preview th,.preview td{padding:0;border:0}
+.preview .corner{min-width:76px;padding:9px 10px;border-bottom:1px solid var(--line-soft);color:var(--ink-muted);font-size:10px;font-weight:400;letter-spacing:.8px;text-align:left;white-space:nowrap}
+.preview thead .corner{border-bottom-color:var(--line-strong)}
+.preview thead select{width:100%;min-height:var(--control-h-sm);padding:0 6px;border:0;border-bottom:1px solid var(--line-soft);background:transparent;color:var(--ink);font-size:11px}
+.preview td{padding:9px 10px;border-bottom:1px solid var(--line-soft);font-size:11px;white-space:nowrap}
 .preview td[data-off="true"]{color:var(--ink-muted);opacity:.5}
-.summary{margin:12px 0 0;color:var(--ink-muted);font-size:11px}
+.summary{margin:12px 0 0;color:var(--ink-muted);font-size:11px;letter-spacing:.4px}
 </style>

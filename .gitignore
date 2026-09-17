@@ -20,3 +20,7 @@ tools/**/bin
 tools/**/obj
 *.nupkg
 .trae
+.preview
+.preview.err
+.pw-install.err
+.dbcheck.cjs

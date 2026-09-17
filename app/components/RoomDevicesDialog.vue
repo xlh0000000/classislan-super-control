@@ -43,7 +43,7 @@ async function move(deviceIds: string[], add: boolean) {
 </script>
 
 <template>
-  <AppDialog :title="`教室：${roomName}`" kicker="ROOM DEVICES / 教室设备" width="720px" @close="emit('close')">
+  <AppDialog :title="`教室：${roomName}`" kicker="教室里的设备" width="720px" @close="emit('close')">
     <input v-model="query" class="search" type="search" placeholder="搜索设备">
     <article class="block">
       <h3>本教室设备 <small>{{ assigned.length }}</small></h3>
@@ -55,7 +55,7 @@ async function move(deviceIds: string[], add: boolean) {
           <small>{{ device.orgName }} · {{ device.id.slice(0, 8) }}</small>
           <button type="button" class="ghost" :disabled="busy" @click="move([device.id], false)">移出</button>
         </li>
-        <li v-if="!assignedList.length" class="muted">本教室还没有设备。</li>
+        <li v-if="!assignedList.length" class="muted">这间教室还没有设备。</li>
       </ul>
     </article>
     <article class="block">
@@ -68,10 +68,10 @@ async function move(deviceIds: string[], add: boolean) {
           <small>{{ device.orgName }} · {{ device.id.slice(0, 8) }}</small>
           <button type="button" :disabled="busy" @click="move([device.id], true)">加入</button>
         </li>
-        <li v-if="!candidates.length" class="muted">没有可加入的设备。</li>
+        <li v-if="!candidates.length" class="muted">没有可以加入的设备。</li>
       </ul>
     </article>
-    <p class="tip">点击设备名称查看已应用策略，勾选可加入多选目标。</p>
+    <p class="tip">点设备名看它生效中的策略，勾选加入多选。</p>
     <template #footer>
       <button type="button" class="ghost" @click="emit('close')">关闭</button>
     </template>
@@ -79,21 +79,22 @@ async function move(deviceIds: string[], add: boolean) {
 </template>
 
 <style scoped>
-.search { width: 100%; min-height: var(--control-h); padding: 0 14px; margin-bottom: 14px; border: 0; border-radius: 14px; background: var(--surface-2); color: var(--ink); font-size: 12px; }
-.block { padding: 16px; border-radius: var(--radius-row); background: var(--surface-2); }
-.block + .block { margin-top: 12px; }
-h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 13px; }
-h3 small { color: var(--ink-muted); font-size: 10px; font-weight: 400; }
-ul { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
-li { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 9px 12px; border-radius: var(--radius-row); background: var(--surface-1); font-size: 12px; }
+.search { width: 100%; min-height: var(--control-h); margin-bottom: 18px; }
+.block { padding: 0; border: 1px solid var(--line-soft); background: var(--surface-1); }
+.block + .block { margin-top: 16px; }
+h3 { display: flex; align-items: baseline; gap: 10px; margin: 0; padding: 16px 18px; border-bottom: 1px solid var(--line-strong); font-size: 14px; font-weight: 600; }
+h3 small { color: var(--ink-muted); font-size: 10px; font-weight: 400; letter-spacing: 1px; }
+ul { margin: 0; padding: 0; list-style: none; }
+li { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto auto; align-items: center; gap: 12px; min-height: 62px; padding: 10px 18px; border-bottom: 1px solid var(--line-soft); font-size: 12px; transition: background var(--t-base) var(--ease-enter); }
+li:last-child { border-bottom: 0; }
+li:hover { background: var(--accent-wash); }
 li small { color: var(--ink-muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pick { display: flex; padding: 4px; border-radius: var(--radius-control-sm); }
-li[data-on="true"] { box-shadow: inset 0 0 0 2px var(--accent); }
-.name { padding: 0; border: 0; background: none; color: var(--ink); font-size: 12px; text-align: left; cursor: pointer; }
-.name:hover { text-decoration: underline; }
-li button:not(.name) { min-height: var(--control-h-sm); padding: 0 12px; border: 0; border-radius: var(--radius-control-sm); background: var(--ink); color: var(--canvas); font-size: 11px; cursor: pointer; }
-li button.ghost { background: var(--surface-2); color: var(--ink); }
-li button:disabled { opacity: .5; cursor: not-allowed; }
+.pick { display: flex; }
+li[data-on="true"] { box-shadow: inset 2px 0 0 var(--accent); }
+.name { min-height: 0; padding: 0; border: 0; background: none; color: var(--ink); font-size: 13px; text-align: left; cursor: pointer; }
+.name:hover { border: 0; background: none; color: var(--accent); text-decoration: underline; text-underline-offset: 4px; }
+li button:not(.name) { min-height: var(--control-h-sm); }
+li button:disabled { opacity: .45; cursor: not-allowed; }
 
-.tip { margin: 12px 0 0; color: var(--ink-muted); font-size: 10px; }
+.tip { margin: 16px 0 0; color: var(--ink-muted); font-size: 10px; letter-spacing: .6px; }
 </style>

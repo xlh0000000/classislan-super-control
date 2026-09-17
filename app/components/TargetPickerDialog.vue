@@ -4,10 +4,10 @@ const emit = defineEmits<{ close: [] }>();
 </script>
 
 <template>
-  <AppDialog title="选择目标" kicker="TARGETS / 操作目标" width="620px" @close="emit('close')">
+  <AppDialog title="选择目标" kicker="勾选要操作的设备" width="620px" @close="emit('close')">
     <TargetTree compact />
     <template #footer>
-      <button type="button" @click="emit('close')">完成</button>
+      <button type="button" class="solid" @click="emit('close')">完成</button>
     </template>
   </AppDialog>
 </template>

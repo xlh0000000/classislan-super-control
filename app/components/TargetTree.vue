@@ -1,6 +1,6 @@
 <script setup lang="ts">
 const {
-  selection, devices, org, enabledDevices, deviceIds, count, empty, summary, subtreeIds,
+  selection, org, enabledDevices, count, empty, summary, subtreeIds,
   toggleSchool, toggleOrg, toggleTag, toggleDevice, clear,
 } = useTargetSelection();
 
@@ -25,7 +25,7 @@ const countInTag = (tagId: string) => enabledDevices.value.filter((device) => de
 <template>
   <section class="tree" :class="{ compact }">
     <header>
-      <div><span>{{ compact ? "PICK TARGETS / 选择目标" : "OPERATION TARGETS / 操作目标" }}</span><strong>{{ empty ? "未选择目标" : summary }}</strong></div>
+      <div><span class="micro">{{ compact ? "选择目标" : "操作目标" }}</span><strong>{{ empty ? "未选择目标" : summary }}</strong></div>
       <button type="button" class="ghost" :disabled="empty" @click="clear">清空</button>
     </header>
     <p v-if="!compact" class="scope-line">
@@ -46,7 +46,7 @@ const countInTag = (tagId: string) => enabledDevices.value.filter((device) => de
         <span>{{ node.name }}</span>
         <small>{{ countInSubtree(node.id) }}</small>
       </label>
-      <p v-if="!org.nodes.length" class="hint">尚无组织节点。</p>
+      <p v-if="!org.nodes.length" class="hint">还没有组织节点。</p>
     </details>
 
     <details v-if="org.tags.length" open>
@@ -72,14 +72,44 @@ const countInTag = (tagId: string) => enabledDevices.value.filter((device) => de
       <p v-if="!visibleDevices.length" class="hint">没有匹配的设备。</p>
     </details>
 
-    <p v-if="ungrouped.length" class="hint">{{ ungrouped.length }} 台设备未分组，请在上方设备列表中选择。</p>
-    <p v-if="!compact" class="hint">已选目标会作用于中间面板的所有操作；设备总数 {{ deviceIds.length }}。</p>
+    <p v-if="ungrouped.length" class="hint">{{ ungrouped.length }} 台设备没分组，在下面的设备列表里选。</p>
+    
   </section>
 </template>
 
 <style scoped>
-.tree{display:grid;gap:10px;align-content:start}.tree header{display:flex;justify-content:space-between;align-items:start;gap:8px}.tree header div{display:grid;gap:4px;min-width:0}.tree header span{color:var(--ink-muted);font-size:8px;letter-spacing:.12em}.tree header strong{font-size:13px}.scope-line{display:flex;align-items:center;gap:8px;margin:0;color:var(--ink-soft);font-size:11px}.count{font-size:20px;font-weight:700;color:var(--ink)}.pill{padding:3px 8px;border-radius:9px;background:var(--surface-2);color:var(--ink);font-size:9px}.row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;min-height:44px;padding:0 10px;border-radius:var(--radius-control-sm);background:var(--surface-2);font-size:12px;cursor:pointer}.row:hover{background:var(--surface-3, var(--surface-2))}.row.root{background:transparent;padding-left:0}.row small{color:var(--ink-muted);font-size:9px;display:inline-flex;align-items:center;gap:5px}.row i:not(.dot){width:9px;height:9px;border-radius:3px;justify-self:start}.row.device small{max-width:112px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}details{display:grid;gap:5px}.rows{display:grid;gap:5px}.tree.compact{gap:8px}.tree.compact .rows{max-height:220px;overflow:auto}.tree.compact .row{min-height:var(--control-h-sm);font-size:11px}summary{display:flex;align-items:center;gap:6px;padding:4px 0;color:var(--ink-muted);font-size:9px;letter-spacing:.1em;cursor:pointer}summary small{font-size:9px}.search{min-height:var(--control-h-sm);padding:0 10px;border:0;border-radius:var(--radius-control-sm);background:var(--surface-2);color:var(--ink);font-size:12px}.hint{margin:0;color:var(--ink-muted);font-size:10px;line-height:1.5}
-
-.row[data-on="true"]{background:var(--surface-3, var(--surface-2));box-shadow:inset 0 0 0 2px var(--accent)}
-.tree.compact .row{min-height:var(--control-h-sm);font-size:11px}
+.tree { display: grid; gap: 12px; align-content: start; }
+.tree header { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.tree header div { display: grid; gap: 6px; min-width: 0; }
+.tree header .micro { color: var(--ink-muted); font-size: 10px; letter-spacing: 1.2px; }
+.tree header strong { font-size: 14px; font-weight: 600; }
+.scope-line { display: flex; align-items: center; gap: 10px; margin: 0; color: var(--ink-soft); font-size: 11px; }
+.count { color: var(--ink); font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.pill { padding: 4px 9px; border: 1px solid var(--line); color: var(--ink-soft); font-size: 10px; }
+/* 目标行：RhineLab 的发丝行 + hover 洗色。 */
+.row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--line-soft);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background var(--t-base) var(--ease-enter);
+}
+.row:hover { background: var(--accent-wash); }
+.row[data-on="true"] { background: var(--accent-wash); box-shadow: inset 2px 0 0 var(--accent); }
+.row.root { border-bottom-color: var(--line-strong); }
+.row small { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-muted); font-size: 10px; letter-spacing: 0.5px; }
+.row i:not(.dot) { width: 10px; height: 10px; justify-self: start; }
+.row.device small { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+details { display: grid; gap: 2px; }
+.rows { display: grid; gap: 0; }
+.tree.compact { gap: 10px; }
+.tree.compact .rows { max-height: 240px; overflow: auto; }
+summary { display: flex; align-items: center; gap: 8px; padding: 4px 0; color: var(--ink-muted); font-size: 10px; letter-spacing: 1.2px; cursor: pointer; }
+.search { min-height: var(--control-h-sm); padding: 0 11px; border: 1px solid var(--line); background: var(--surface-1); color: var(--ink); font-size: 13px; }
+.hint { margin: 0; color: var(--ink-muted); font-size: 11px; line-height: 1.7; }
 </style>

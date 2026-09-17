@@ -45,7 +45,7 @@ async function deploy() {
 <template>
   <AppDialog
     :title="`下发配置：${configurationName}`"
-    :kicker="props.revision ? `DEPLOY / 当前修订 R${props.revision}` : 'DEPLOY / 下发配置'"
+    :kicker="props.revision ? `当前修订 R${props.revision}` : '下发配置'"
     width="720px"
     @close="emit('close')"
   >
@@ -53,12 +53,12 @@ async function deploy() {
       <div><dt>目标</dt><dd>{{ summary }}</dd></div>
       <div><dt>影响</dt><dd>{{ count }} 台设备</dd></div>
     </dl>
-    <p class="hint">勾选组织、标签或单台设备；下发会替换这些作用域原有的同名节。</p>
+    <p class="hint">下发会替换这些范围里原有的同名内容。</p>
     <TargetTree compact />
     <ul v-if="result" class="result">
       <li v-for="target in result.targets" :key="`${target.scopeType}:${target.scopeId ?? ''}`">
         <span>{{ targetLabel(target) }} · R{{ target.revision }} · {{ target.deviceCount }} 台</span>
-        <small v-if="target.replacedSection">已替换该作用域原有的 {{ result.section }} 节</small>
+        <small v-if="target.replacedSection">已替换原有的 {{ result.section }}</small>
       </li>
     </ul>
     <template #footer>
@@ -71,13 +71,14 @@ async function deploy() {
 </template>
 
 <style scoped>
-.scope{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:0 0 14px}
-.scope div{padding:14px;border-radius:14px;background:var(--surface-2)}
-.scope dt{color:var(--ink-muted);font-size:9px;letter-spacing:.1em}
-.scope dd{margin:8px 0 0;font-size:14px;font-weight:650}
-.hint{margin:0 0 10px;color:var(--ink-soft);font-size:11px}
-.result{display:grid;gap:6px;margin:14px 0 0;padding:0;list-style:none}
-.result li{display:flex;justify-content:space-between;gap:12px;padding:10px 14px;border-radius:var(--radius-row);background:var(--surface-2);font-size:11px}
-.result small{color:var(--ink-soft);font-size:9px}
-@media (max-width:640px){.scope{grid-template-columns:1fr}}
+.scope { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; margin: 0 0 20px; border: 1px solid var(--line-soft); }
+.scope div { padding: 18px 20px; }
+.scope div + div { border-left: 1px solid var(--line-soft); }
+.scope dt { color: var(--ink-muted); font-size: 11px; letter-spacing: 0.8px; }
+.scope dd { margin: 10px 0 0; font-size: 20px; font-weight: 600; letter-spacing: -0.4px; }
+.hint { margin: 0 0 18px; color: var(--ink-muted); font-size: 12px; }
+.result { display: grid; gap: 0; margin: 20px 0 0; padding: 0; list-style: none; border-top: 1px solid var(--line-soft); }
+.result li { display: flex; justify-content: space-between; gap: 14px; padding: 13px 2px; border-bottom: 1px solid var(--line-soft); font-size: 12px; }
+.result small { color: var(--ink-muted); font-size: 11px; }
+@media (max-width: 640px) { .scope { grid-template-columns: 1fr; } .scope div + div { border-left: 0; border-top: 1px solid var(--line-soft); } }
 </style>

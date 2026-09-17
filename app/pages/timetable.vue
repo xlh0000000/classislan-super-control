@@ -335,17 +335,23 @@ onMounted(async () => {
 </script>
 
 <template>
-  <PageHeading kicker="TIMETABLE / 课表编辑器" title="课表" description="直接可视化编辑科目、时间表与一周课表，保存为配置库里的 profile 修订；导入现有 Profile.json 只作为批量入口。">
+  <PageHeading kicker="可视化排课" title="课表">
     <button type="button" class="ghost" @click="showQuick = true">快装</button>
-    <button type="button" @click="fileInput?.click()">导入档案</button>
-    <button type="button" @click="createBlank">新建空档案</button>
-    <button type="button" :disabled="loading" @click="save">保存为新修订</button>
-    <button type="button" :disabled="!activeId" :title="activeId ? '把当前修订下发到已选目标' : '先保存为新修订'" @click="showDeploy = !showDeploy">下发到已选目标</button>
+    <button type="button" class="ghost" @click="fileInput?.click()">导入档案</button>
+    <button type="button" class="ghost" @click="createBlank">新建空档案</button>
+    <button type="button" class="ghost" :disabled="!activeId" @click="showDeploy = !showDeploy">下发到已选目标</button>
+    <button type="button" class="solid" :disabled="loading" @click="save">保存为新修订</button>
     <input ref="fileInput" hidden type="file" accept="application/json,.json" @change="importFile">
   </PageHeading>
 
-  <DeployTargets v-if="showDeploy && activeId" :configuration-id="activeId" :configuration-name="profileName" :revision="profileConfigs.find(item => item.configurationId === activeId)?.revision" @deployed="onDeployed" @close="showDeploy = false" />
-
+  <DeployTargets
+    v-if="showDeploy && activeId"
+    :configuration-id="activeId"
+    :configuration-name="profileName"
+    :revision="profileConfigs.find(item => item.configurationId === activeId)?.revision"
+    @deployed="onDeployed"
+    @close="showDeploy = false"
+  />
 
   <QuickSetupDialog
     v-if="showQuick"
@@ -365,25 +371,31 @@ onMounted(async () => {
     </label>
     <label>档案名称<input v-model="profileName" @input="markDirty"></label>
     <span class="badge" :data-dirty="dirty">{{ dirty ? "有未保存修改" : "已同步" }}</span>
-    <span class="badge">科目 {{ profile.subjects.length }} · 时间表 {{ profile.timeLayouts.length }} · 课表 {{ profile.classPlans.length }}</span>
+    <span class="micro">{{ profile.subjects.length }} 个科目 · {{ profile.timeLayouts.length }} 张时间表 · {{ profile.classPlans.length }} 张课表</span>
   </section>
 
-  <nav class="tabs">
-    <button v-for="item in tabs" :key="item.key" type="button" :class="{ active: tab === item.key }" @click="tab = item.key">{{ item.label }}</button>
-  </nav>
+  <PageTabs v-model="tab" :items="tabs" />
 
-  <section v-if="tab === 'timetable'" class="panel">
+  <section v-if="tab === 'timetable'">
     <header class="panel-head">
       <label>课表群<select v-model="activeGroupId" @change="markDirty"><option v-for="group in profile.classPlanGroups" :key="group.id" :value="group.id">{{ group.name }}</option></select></label>
       <label>基准时间表<select v-model="baseLayoutId"><option v-for="layout in profile.timeLayouts" :key="layout.id" :value="layout.id">{{ layout.name }}</option></select></label>
       <button type="button" @click="addGroup">新增课表群</button>
       <button type="button" @click="syncGroupLayout">套用时间表到本周</button>
     </header>
-    <p v-if="!periods.length" class="muted">当前时间表还没有“上课”时间点，请先到“时间表”页添加，或用页首「快装」粘贴课表。</p>
+    <p v-if="!periods.length" class="muted">这张时间表还没有“上课”时间点。去「时间表」加，或用「快装」粘贴。</p>
     <div v-else class="board">
       <div class="grid-shell">
         <table class="grid">
-          <thead><tr><th class="corner">节次</th><th v-for="day in WEEKDAYS" :key="day.value"><span class="day">{{ day.label }}</span><input :value="dayPlanName(day.value)" placeholder="未创建" maxlength="40" @change="renameDay(day.value, ($event.target as HTMLInputElement).value)"></th></tr></thead>
+          <thead>
+            <tr>
+              <th class="corner">节次</th>
+              <th v-for="day in WEEKDAYS" :key="day.value">
+                <span class="day">{{ day.label }}</span>
+                <input :value="dayPlanName(day.value)" placeholder="未创建" maxlength="40" @change="renameDay(day.value, ($event.target as HTMLInputElement).value)">
+              </th>
+            </tr>
+          </thead>
           <tbody>
             <tr v-for="(period, rowIndex) in periods" :key="`${period.item.startTime}-${rowIndex}`">
               <th class="period"><strong>{{ rowIndex + 1 }}</strong><small>{{ period.item.startTime }}–{{ period.item.endTime }}</small></th>
@@ -416,9 +428,12 @@ onMounted(async () => {
     </div>
   </section>
 
-  <section v-else-if="tab === 'subjects'" class="panel">
-    <header class="panel-head"><h2>科目</h2><button type="button" @click="addSubject">新增科目</button></header>
-    <p v-if="!profile.subjects.length" class="muted">还没有科目。新增后即可在课表里选择。</p>
+  <section v-else-if="tab === 'subjects'">
+    <header class="panel-head">
+      <h2>科目</h2>
+      <button type="button" @click="addSubject">新增科目</button>
+    </header>
+    <p v-if="!profile.subjects.length" class="muted">还没有科目。</p>
     <div v-else class="rows">
       <div v-for="subject in profile.subjects" :key="subject.id" class="row subject-row">
         <label>名称<input v-model="subject.name" maxlength="40" @input="markDirty"></label>
@@ -430,7 +445,7 @@ onMounted(async () => {
     </div>
   </section>
 
-  <section v-else class="panel">
+  <section v-else>
     <header class="panel-head">
       <label>编辑时间表<select v-model="baseLayoutId"><option v-for="layout in profile.timeLayouts" :key="layout.id" :value="layout.id">{{ layout.name }}</option></select></label>
       <button type="button" @click="addLayout">新增时间表</button>
@@ -449,9 +464,10 @@ onMounted(async () => {
         </div>
       </div>
       <button type="button" class="add-item" @click="addLayoutItem">新增时间点</button>
-      <p class="hint">共 {{ activeLayout.layouts.length }} 个时间点，其中 {{ periods.length }} 节“上课”。课表按“上课”时间点生成行。</p>
+      <p class="hint">共 {{ activeLayout.layouts.length }} 个时间点，其中 {{ periods.length }} 节“上课”。</p>
     </template>
   </section>
+
   <ConfirmDialog
     v-if="pending"
     :title="pending.title"
@@ -463,19 +479,66 @@ onMounted(async () => {
     @confirm="runPending"
   />
 </template>
-
 <style scoped>
+section { margin-top: 22px; }
+.toolbar { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 18px; margin-bottom: 22px; }
+.toolbar label { display: grid; gap: 8px; color: var(--ink-muted); font-size: 11px; letter-spacing: 0.6px; }
+.toolbar select { min-width: 220px; }
+.toolbar input { min-width: 200px; }
+.badge { padding: 6px 11px; border: 1px solid var(--line); color: var(--ink-muted); font-size: 10px; letter-spacing: 0.8px; }
+.badge[data-dirty="true"] { border-color: var(--accent); color: var(--accent); }
+.panel-head { flex-wrap: wrap; padding-bottom: 18px; border-bottom: 1px solid var(--line-strong); margin-bottom: 22px; }
+.panel-head label { display: grid; gap: 8px; color: var(--ink-muted); font-size: 11px; letter-spacing: 0.6px; }
+.panel-head h2 { margin: 0; }
 
-.toolbar{display:flex;flex-wrap:wrap;align-items:end;gap:14px;margin-top:14px;padding:20px 22px;border-radius:var(--radius-md);background:var(--surface-1)}.toolbar label{display:grid;gap:7px;font-size:10px;color:var(--ink-soft)}.toolbar select,.toolbar input{min-height:44px;padding:0 14px;border:0;border-radius:14px;background:var(--surface-2);color:var(--ink)}.toolbar label:first-child{flex:1;min-width:240px}.toolbar label:first-child select{width:100%}.badge{align-self:center;padding:9px 14px;border-radius:12px;background:var(--surface-2);color:var(--ink-soft);font-size:10px}.badge[data-dirty="true"]{background:var(--ink);color:var(--canvas)}
-.tabs{margin-top:14px}
-.panel{margin-top:14px;padding:24px;border-radius:var(--radius-md);background:var(--surface-1)}.panel-head{display:flex;flex-wrap:wrap;align-items:end;gap:12px;margin-bottom:16px}.panel-head h2{margin:0;font-size:20px}.panel-head label{display:grid;gap:7px;font-size:10px;color:var(--ink-soft)}.panel-head select,.panel-head input{min-height:44px;padding:0 14px;border:0;border-radius:14px;background:var(--surface-2);color:var(--ink)}.panel-head button,.row button,.add-item{min-height:44px;padding:0 16px;border:0;border-radius:14px;background:var(--surface-2);color:var(--ink);cursor:pointer}.panel-head button:last-child{background:var(--ink);color:var(--canvas)}button.danger{color:var(--bad)}button:disabled{opacity:.45;cursor:not-allowed}
-.grid-shell{overflow:auto;border-radius:var(--radius-row)}.grid{border-collapse:separate;border-spacing:6px;min-width:820px}.grid th,.grid td{padding:0}.grid thead th{min-width:110px;padding:8px;border-radius:12px;background:var(--surface-2);vertical-align:top}.grid .corner{min-width:96px;color:var(--ink-muted);font-size:9px;letter-spacing:.08em}.day{display:block;margin-bottom:6px;font-size:11px}.grid thead input{width:100%;min-height:var(--control-h-sm);padding:0 8px;border:0;border-radius:9px;background:var(--surface-1);color:var(--ink);font-size:10px}.grid .period{min-width:96px;padding:10px 12px;border-radius:12px;background:var(--surface-2);text-align:left;vertical-align:middle}.grid .period strong{display:block;font-size:15px}.grid .period small{color:var(--ink-muted);font-size:9px}.grid td .cell{width:100%;min-height:44px;padding:0 10px;border:0;border-radius:12px;background:var(--surface-2);color:var(--ink);cursor:pointer;font-size:12px;text-align:left}
-.grid td .cell:hover{background:var(--surface-3)}
-.grid td .cell[data-empty="true"]{color:var(--ink-muted)}
-.grid td .cell[data-current="true"]{background:var(--accent);color:var(--accent-ink)}
-.grid td .cell:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
-.rows{display:grid;gap:8px}.row{display:flex;flex-wrap:wrap;align-items:end;gap:12px;padding:14px;border-radius:var(--radius-row);background:var(--surface-2)}.row label{display:grid;gap:6px;font-size:10px;color:var(--ink-soft);flex:1;min-width:130px}.row input,.row select{min-height:var(--control-h);padding:0 12px;border:0;border-radius:12px;background:var(--surface-1);color:var(--ink)}.row label.check{display:flex;align-items:center;gap:8px;flex:0 0 auto;min-width:0}.row label.check input{min-height:auto}.layout-name{display:grid;gap:7px;margin-bottom:14px;font-size:10px;color:var(--ink-soft)}.layout-name input{min-height:44px;padding:0 14px;border:0;border-radius:14px;background:var(--surface-2);color:var(--ink)}.add-item{margin-top:12px}
-.board{display:grid;grid-template-columns:minmax(0,1fr) 288px;gap:16px;align-items:start}
-@media(max-width:1100px){.board{grid-template-columns:1fr}}.hint{margin:12px 0 0;color:var(--ink-muted);font-size:10px}
-@media(max-width:780px){.toolbar{flex-direction:column;align-items:stretch}.row{flex-direction:column;align-items:stretch}}
+/* 课表网格：RhineLab 的发丝格线，节次表头用微标签。 */
+.board { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 22px; align-items: start; }
+.grid-shell { overflow: auto; }
+.grid { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.grid th, .grid td { border: 1px solid var(--line-soft); padding: 6px; text-align: center; }
+.grid thead th { border-top: 0; padding: 12px 6px; }
+.grid thead th.corner { border-left: 0; color: var(--ink-muted); font-size: 10px; letter-spacing: 1.2px; font-weight: 400; }
+.grid .day { display: block; font-size: 13px; font-weight: 600; }
+.grid thead input { width: 100%; margin-top: 8px; min-height: 28px; padding: 0 8px; border: 1px solid var(--line-soft); background: transparent; font-size: 11px; text-align: center; }
+.grid tbody th.period { border-left: 0; width: 76px; }
+.grid tbody th.period strong { display: block; font-size: 15px; font-weight: 600; }
+.grid tbody th.period small { display: block; margin-top: 4px; color: var(--ink-faint); font-size: 9px; font-variant-numeric: tabular-nums; }
+.cell {
+  width: 100%;
+  min-height: 56px;
+  padding: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  letter-spacing: 0.2px;
+  text-align: center;
+  transition: background var(--t-base) var(--ease-enter), color var(--t-base) var(--ease-enter);
+}
+.cell:hover { border: 0; background: var(--accent-wash); color: var(--ink); }
+.cell[data-empty="true"] { color: var(--ink-faint); }
+.cell[data-current="true"], .cell[data-current="true"]:hover { border: 0; background: var(--fill); color: var(--fill-ink); }
+
+/* 科目 / 时间点：一行一个字段组。 */
+.rows { display: grid; border-top: 1px solid var(--line-strong); }
+.row {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  padding: 16px 2px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.row label { display: grid; gap: 7px; flex: 1; min-width: 0; color: var(--ink-muted); font-size: 11px; letter-spacing: 0.6px; }
+.row input, .row select { width: 100%; }
+.row label.check { display: flex; align-items: center; gap: 9px; flex: 0 0 auto; padding-bottom: 8px; font-size: 12px; }
+.layout-name { display: grid; gap: 8px; margin-bottom: 20px; max-width: 360px; color: var(--ink-muted); font-size: 11px; letter-spacing: 0.6px; }
+.layout-name input { width: 100%; }
+.add-item { margin-top: 18px; }
+.hint, .muted { color: var(--ink-muted); font-size: 12px; line-height: 1.8; }
+.hint { margin-top: 16px; }
+@media (max-width: 1080px) {
+  .board { grid-template-columns: 1fr; }
+  .row { flex-wrap: wrap; }
+  .row label { flex: 1 1 160px; }
+}
 </style>

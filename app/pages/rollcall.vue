@@ -80,15 +80,11 @@ async function remove() {
 </script>
 
 <template>
-  <PageHeading
-    kicker="ROLLCALL / 点名名单"
-    title="点名名单"
-    description="名单在云端维护，随轮询下发到设备端点名悬浮窗。同一目标再次保存即为覆盖；设备按 设备 → 最近的组织 → 全校 取用。"
-  >
-    <button type="button" @click="openCreate">新增名单</button>
+  <PageHeading kicker="名单下发给设备悬浮窗" title="点名名单">
+    <button type="button" class="solid" @click="openCreate">新增名单</button>
   </PageHeading>
 
-  <EmptyState v-if="!data.rosters.length" title="还没有点名名单" description="新增一份名单并选择作用范围，设备端悬浮窗会自动拿到最新的姓名列表。" />
+  <EmptyState v-if="!data.rosters.length" title="还没有点名名单" />
 
   <section v-else class="rosters">
     <article v-for="roster in data.rosters" :key="roster.id">
@@ -107,7 +103,7 @@ async function remove() {
     </article>
   </section>
 
-  <AppDialog v-if="draft" :title="draft.id ? '编辑名单' : '新增名单'" kicker="ROLLCALL / 云端名单" width="640px" @close="draft = null">
+  <AppDialog v-if="draft" :title="draft.id ? '编辑名单' : '新增名单'" kicker="选好范围，填上姓名" width="640px" @close="draft = null">
     <div class="form">
       <label>名单名称<input v-model="draft.name" maxlength="60" placeholder="例如：高一（2）班"></label>
       <label>作用范围
@@ -135,7 +131,7 @@ async function remove() {
     </label>
     <template #footer>
       <button type="button" class="ghost" @click="draft = null">取消</button>
-      <button type="button" :disabled="pending" @click="save">{{ pending ? "保存中…" : "保存并下发" }}</button>
+      <button type="button" class="solid" :disabled="pending" @click="save">{{ pending ? "保存中…" : "保存并下发" }}</button>
     </template>
   </AppDialog>
 
@@ -152,20 +148,23 @@ async function remove() {
 </template>
 
 <style scoped>
-.rosters { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; margin-top: 14px; }
-.rosters article { display: grid; gap: 14px; padding: 22px; border-radius: var(--radius-md); background: var(--surface-1); }
-.rosters header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
-.rosters strong { font-size: 17px; }
-.scope { padding: 4px 10px; border-radius: 999px; background: var(--surface-2); color: var(--ink-soft); font-size: 11px; }
+.rosters { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; }
+.rosters article { display: grid; gap: 14px; padding: 24px 26px; border: 1px solid var(--line-soft); background: var(--surface-1); transition: border-color var(--t-base) var(--ease-enter); }
+.rosters article:hover { border-color: var(--accent); }
+.rosters header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.rosters strong { font-size: 18px; font-weight: 600; letter-spacing: -0.3px; }
+.scope { padding: 4px 9px; border: 1px solid var(--line); color: var(--ink-muted); font-size: 10px; letter-spacing: 0.6px; }
 .names { margin: 0; color: var(--ink-soft); font-size: 12px; line-height: 1.8; }
-.rosters footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.rosters small { color: var(--ink-muted); font-size: 11px; }
-.rosters footer div { display: flex; gap: 6px; }
-.rosters .remove { color: var(--bad); }
-.form { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-.form label, .names-box { display: grid; gap: 8px; color: var(--ink-soft); font-size: 11px; }
-.form input, .form select, .names-box textarea { min-height: var(--control-h); padding: 0 14px; border: 0; border-radius: 14px; background: var(--surface-2); color: var(--ink); }
-.names-box { margin-top: 16px; }
-.names-box textarea { padding: 12px 14px; line-height: 1.8; resize: vertical; }
+.rosters footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
+.rosters small { color: var(--ink-faint); font-size: 10px; letter-spacing: 0.8px; font-variant-numeric: tabular-nums; }
+.rosters footer div { display: flex; gap: 16px; }
+.rosters footer button { min-height: 0; padding: 0 0 3px; border: 0; border-bottom: 1px solid transparent; background: none; color: var(--ink-muted); font-size: 11px; letter-spacing: 0.5px; }
+.rosters footer button:hover:not(:disabled) { border-bottom-color: var(--accent); background: none; color: var(--accent); }
+.rosters .remove:hover:not(:disabled) { border-bottom-color: var(--bad); color: var(--bad); }
+.form { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.form label, .names-box { display: grid; gap: 8px; color: var(--ink-muted); font-size: 11px; letter-spacing: 0.6px; }
+.form input, .form select, .names-box textarea { width: 100%; }
+.names-box { margin-top: 18px; }
+.names-box textarea { padding: 12px 14px; line-height: 1.9; resize: vertical; }
 @media (max-width: 640px) { .form { grid-template-columns: 1fr; } }
 </style>
