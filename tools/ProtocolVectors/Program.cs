@@ -119,8 +119,15 @@ Add("poll-request-with-crash-reports", "poll",
                 "", "2.1.1.1", "0.1.0", "Windows/x64"),
         }));
 
+// 换行显式写死 LF：默认跟随平台（Windows 是 CRLF），会让同一份向量在两个平台上
+// 产生不同字节，从而让 --check 在别的系统上误报“向量已过期”。
 var json = JsonSerializer.Serialize(new ContractFile("protocol-v1", vectors),
-    new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping }) + "\n";
+    new JsonSerializerOptions(JsonSerializerDefaults.Web)
+    {
+        WriteIndented = true,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        NewLine = "\n",
+    }) + "\n";
 
 if (check)
 {

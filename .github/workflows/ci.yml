@@ -17,8 +17,8 @@ jobs:
     env:
       TZ: Asia/Shanghai
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -35,8 +35,8 @@ jobs:
     name: 协议与规范向量
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
       - name: C# 到 TS 协议向量
@@ -48,13 +48,13 @@ jobs:
     name: ClassIsland 插件
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
       - name: 构建插件包
         run: dotnet build plugin/ClassIsland.Control.Plugin/ClassIsland.Control.Plugin.csproj -c Release
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: plugin-cipx
           path: |
