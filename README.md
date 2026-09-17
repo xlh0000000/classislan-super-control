@@ -74,6 +74,16 @@ dotnet build plugin/ClassIsland.Control.Plugin/ClassIsland.Control.Plugin.csproj
 
 调试时使用官方模板的 `-epp $(TargetDir)` 启动配置。
 
+## 🏷️ 发布
+
+打 `v*` 标签即自动发版（`.github/workflows/release.yml`）：构建插件包与服务端压缩包附到 Release，并把同版本镜像推到 `ghcr.io/xlh0000000/classislan-super-control`。
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+插件版本写在 `plugin/ClassIsland.Control.Plugin/manifest.yml`，发版前与标签对齐（不一致时流水线只警告，不拦发版）。`main` 的推送与 PR 会跑 `.github/workflows/ci.yml`：类型检查、单元测试、协议与 JCS 向量、插件构建。
+
 ## 🗂 目录
 
 ```text

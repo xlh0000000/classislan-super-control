@@ -1,0 +1,123 @@
+name: 发布
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  plugin:
+    name: 构建插件包
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: 构建插件包
+        run: dotnet build plugin/ClassIsland.Control.Plugin/ClassIsland.Control.Plugin.csproj -c Release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugin-cipx
+          path: |
+            plugin/ClassIsland.Control.Plugin/cipx/ClassIsland.Control.Plugin.cipx
+            plugin/ClassIsland.Control.Plugin/cipx/checksums.md
+          if-no-files-found: error
+
+  web:
+    name: 构建服务端
+    runs-on: ubuntu-latest
+    env:
+      TZ: Asia/Shanghai
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: 安装依赖
+        run: npm ci
+      - name: 生产构建
+        run: npm run build
+      - name: 打包服务端
+        run: tar -czf classisland-control-${{ github.ref_name }}.tar.gz -C .output .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-tarball
+          path: classisland-control-*.tar.gz
+          if-no-files-found: error
+
+  docker:
+    name: 推送镜像
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: 生成小写镜像名
+        id: image
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ${{ steps.image.outputs.name }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  release:
+    name: 建立 Release
+    needs: [plugin, web]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: 校对插件版本
+        run: |
+          manifest=$(sed -n 's/^version:[[:space:]]*//p' plugin/ClassIsland.Control.Plugin/manifest.yml | tr -d '\r' | head -n1)
+          tag="${GITHUB_REF_NAME#v}"
+          norm() { local IFS=.; read -r a b c d <<< "$1"; echo "${a:-0}.${b:-0}.${c:-0}.${d:-0}"; }
+          echo "插件清单版本 $manifest / 标签 $GITHUB_REF_NAME"
+          if [ "$(norm "$manifest")" != "$(norm "$tag")" ]; then
+            echo "::warning::标签 $GITHUB_REF_NAME 与 plugin/ClassIsland.Control.Plugin/manifest.yml 的 $manifest 不一致"
+          fi
+      - name: 整理产物
+        run: |
+          mkdir -p upload
+          cp artifacts/plugin-cipx/ClassIsland.Control.Plugin.cipx upload/
+          cp artifacts/plugin-cipx/checksums.md upload/
+          cp artifacts/server-tarball/*.tar.gz upload/
+          ls -l upload
+      - name: 建立或更新 Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" upload/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" upload/* --title "$GITHUB_REF_NAME" --generate-notes
+          fi

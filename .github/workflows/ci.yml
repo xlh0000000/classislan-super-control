@@ -1,0 +1,63 @@
+name: 持续集成
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: Web 管理端
+    runs-on: ubuntu-latest
+    env:
+      TZ: Asia/Shanghai
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: 安装依赖
+        run: npm ci
+      - name: 类型检查
+        run: npm run typecheck
+      - name: 单元测试
+        run: npm test
+      - name: 生产构建
+        run: npm run build
+
+  protocol:
+    name: 协议与规范向量
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: C# 到 TS 协议向量
+        run: dotnet run --project tools/ProtocolVectors/ProtocolVectors.csproj -c Release -- --check
+      - name: JCS 规范向量
+        run: dotnet run --project tools/JcsVectors/JcsVectors.csproj -c Release
+
+  plugin:
+    name: ClassIsland 插件
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: 构建插件包
+        run: dotnet build plugin/ClassIsland.Control.Plugin/ClassIsland.Control.Plugin.csproj -c Release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugin-cipx
+          path: |
+            plugin/ClassIsland.Control.Plugin/cipx/ClassIsland.Control.Plugin.cipx
+            plugin/ClassIsland.Control.Plugin/cipx/checksums.md
+          if-no-files-found: error
