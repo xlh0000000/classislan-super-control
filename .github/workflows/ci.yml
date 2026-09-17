@@ -23,7 +23,19 @@ jobs:
           node-version: 24
           cache: npm
       - name: 安装依赖
-        run: npm ci
+        run: |
+          set +e
+          node -v && npm -v
+          npm ci --no-audit --no-fund >"$RUNNER_TEMP/npm-ci.log" 2>&1
+          code=$?
+          set -e
+          tail -n 30 "$RUNNER_TEMP/npm-ci.log"
+          if [ "$code" -ne 0 ]; then
+            summary=$(grep -i 'npm error' "$RUNNER_TEMP/npm-ci.log" | tail -n 6 | tr -d '\r' | tr '\n' '~')
+            if [ -z "$summary" ]; then summary=$(tail -n 6 "$RUNNER_TEMP/npm-ci.log" | tr -d '\r' | tr '\n' '~'); fi
+            printf '::error title=npm ci 失败::%s\n' "${summary//\%/%25}"
+          fi
+          exit "$code"
       - name: 类型检查
         run: npm run typecheck
       - name: 单元测试
