@@ -1,4 +1,6 @@
 import { advanceTaskState } from "./tasks";
+import { advanceSchedules } from "./auto-tasks";
+import { advanceTriggers } from "./auto-triggers";
 import { writeAuditCheckpoint } from "./audit-checkpoint";
 import { pruneCrashReports } from "./crash-reports";
 
@@ -10,13 +12,17 @@ let started = false;
 export function startTaskScheduler() {
   if (started) return;
   started = true;
-  // 每 10 秒推进一次：scheduled 到期、租约回收、重试、失败阈值、批次激活、聚合。
+  // 每 10 秒推进一次：scheduled 到期、租约回收、重试、失败阈值、批次激活、聚合；周期调度到期派生任务。
   timer = setInterval(() => {
     // 必须包在 IMMEDIATE 事务里：推进器现在会在任务收敛时追加审计事件，
     // 而审计序列号依赖串行写入，脱离事务与并发写请求竞争会产生序列冲突。
     try {
       const db = useDatabase();
-      db.transaction(() => advanceTaskState(db)).immediate();
+      db.transaction(() => {
+        advanceTriggers(db);
+        advanceSchedules(db);
+        advanceTaskState(db);
+      }).immediate();
     } catch (error) { console.error("[scheduler] task advance failed", error); }
   }, 10_000);
   timer.unref();

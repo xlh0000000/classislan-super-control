@@ -6,6 +6,9 @@ import {
   settingsLockFields,
   settingsLockKeys,
   settingsLockSchema,
+  settingsPageFields,
+  settingsPagePrefix,
+  validateSettingsSection,
 } from "../shared/schemas";
 
 /**
@@ -16,9 +19,19 @@ const pluginSource = readFileSync(
   new URL("../plugin/ClassIsland.Control.Plugin/Services/SettingsPolicyService.cs", import.meta.url),
   "utf8",
 );
+const pagePluginSource = readFileSync(
+  new URL("../plugin/ClassIsland.Control.Plugin/Services/SettingsPagePolicyService.cs", import.meta.url),
+  "utf8",
+);
 
 function pluginKeys(source: string): string[] {
   return [...source.matchAll(/\(\s*"([A-Za-z]+)",\s*"/g)].map((match) => match[1]!);
+}
+
+/** ManagedPages 数组里的 (页 Id, 标签) 元组；Id 含点（classisland.plugins）。 */
+function managedPages(source: string): { id: string; label: string }[] {
+  const block = /ManagedPages\s*=\s*\[([\s\S]*?)\];/.exec(source)?.[1] ?? "";
+  return [...block.matchAll(/\(\s*"([\w.]+)",\s*"([^"]+)"\s*\)/g)].map((match) => ({ id: match[1]!, label: match[2]! }));
 }
 
 describe("设置锁定键 ↔ 设备端执行器一致性", () => {
@@ -64,5 +77,40 @@ describe("设置锁定校验", () => {
     const schema = configurationDocumentSchema("settings");
     expect(schema.safeParse({ schemaVersion: 1, settings: { disableDebugMenu: true } }).success).toBe(true);
     expect(schema.safeParse({ schemaVersion: 1, settings: { disableDebugMenu: "yes" } }).success).toBe(false);
+  });
+});
+
+describe("设置页逐页管控 ↔ 设备端一致性", () => {
+  it("服务端字段表与设备端 ManagedPages 的页 Id 与标签完全一致", () => {
+    const pages = managedPages(pagePluginSource);
+    expect(pages.length, "ManagedPages 数组解析失败").toBeGreaterThan(0);
+    expect(pages.map((page) => page.id)).toEqual(settingsPageFields.map((field) => field.key));
+    expect(pages.map((page) => page.label)).toEqual(settingsPageFields.map((field) => field.label));
+  });
+
+  it("settings 节接受 page.* 三态并与布尔锁混用", () => {
+    expect(settingsLockSchema.safeParse({
+      [`${settingsPagePrefix}clock`]: "readonly",
+      [`${settingsPagePrefix}classisland.plugins`]: "hidden",
+      disableSettingsEditing: true,
+    }).success).toBe(true);
+    expect(settingsLockSchema.safeParse({ [`${settingsPagePrefix}general`]: "none" }).success).toBe(true);
+  });
+
+  it("拒绝未知页 Id、非法强度与错误类型", () => {
+    expect(settingsLockSchema.safeParse({ [`${settingsPagePrefix}nope`]: "hidden" }).success).toBe(false);
+    expect(settingsLockSchema.safeParse({ [`${settingsPagePrefix}clock`]: "locked" }).success).toBe(false);
+    expect(settingsLockSchema.safeParse({ [`${settingsPagePrefix}clock`]: true }).success).toBe(false);
+  });
+
+  it("策略发布文档同样守住 page.* 取值", () => {
+    const publish = (settings: Record<string, unknown>) => ({ name: "逐页管控", scopeType: "school" as const, document: { settings } });
+    expect(policyPublishSchema.safeParse(publish({ [`${settingsPagePrefix}window`]: "readonly" })).success).toBe(true);
+    expect(policyPublishSchema.safeParse(publish({ [`${settingsPagePrefix}window`]: 3 })).success).toBe(false);
+  });
+
+  it("validateSettingsSection 对空节与 $config 引用直接放行", () => {
+    expect(validateSettingsSection({})).toBeNull();
+    expect(validateSettingsSection({ $config: "x" })).toBeNull();
   });
 });

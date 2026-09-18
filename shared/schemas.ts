@@ -60,11 +60,75 @@ export const settingsLockFields = [
 
 export const settingsLockKeys = settingsLockFields.map((field) => field.key) as string[];
 
-/** settings 节：全部为布尔开关，未给出的项回落到不锁定。 */
-export const settingsLockSchema = z.record(
-  z.string().min(1).max(60),
-  z.boolean(),
-);
+/** 设置页管控的顶层键前缀：`page.<宿主页面 Id>` 与布尔锁键共用 settings 节，靠前缀区分。 */
+export const settingsPagePrefix = "page.";
+
+/**
+ * 可逐页管控的大设置项（宿主设置页导航里的一项）。key 是宿主 SettingsPageInfo.Id，
+ * 与设备端 SettingsPolicyService.ManagedPages 一一对应，由 parity 测试守住。
+ * management 系列页面不在列：锁掉集控页会把设备自己锁死。
+ */
+export const settingsPageFields = [
+  { key: "general", label: "基本" },
+  { key: "clock", label: "时钟" },
+  { key: "storage", label: "存储" },
+  { key: "privacy", label: "隐私" },
+  { key: "refreshing", label: "翻新与迎新" },
+  { key: "advanced", label: "高级" },
+  { key: "components", label: "组件" },
+  { key: "appearance", label: "外观" },
+  { key: "notification", label: "提醒" },
+  { key: "window", label: "窗口" },
+  { key: "weather", label: "天气" },
+  { key: "automation", label: "自动化" },
+  { key: "update", label: "更新" },
+  { key: "classisland.plugins", label: "插件" },
+  { key: "classisland.themes", label: "主题" },
+] as const;
+
+export const settingsPageKeys = settingsPageFields.map((field) => field.key) as string[];
+
+/** 逐页管控强度：none 不限制、readonly 可见不可改、hidden 从导航与深链中隐藏。 */
+export const settingsPageControls = ["none", "readonly", "hidden"] as const;
+export type SettingsPageControl = (typeof settingsPageControls)[number];
+
+/** 从 settings 节原始对象解析出「页面 Id → 管控强度」（none 视为未管控，不出现在结果里）。 */
+export function resolveSettingsPageControls(settings: Record<string, unknown>): Record<string, SettingsPageControl> {
+  const result: Record<string, SettingsPageControl> = {};
+  for (const [key, value] of Object.entries(settings)) {
+    if (!key.startsWith(settingsPagePrefix) || typeof value !== "string" || value === "none") continue;
+    if ((settingsPageControls as readonly string[]).includes(value))
+      result[key.slice(settingsPagePrefix.length)] = value as SettingsPageControl;
+  }
+  return result;
+}
+
+/**
+ * settings 节取值校验：
+ * - `page.*` 键必须是已知页面 Id，取值三态字符串；
+ * - 其余键必须是非 page.* 的已知布尔锁键，取值布尔。
+ */
+export function validateSettingsSection(settings: Record<string, unknown>): string | null {
+  for (const [key, value] of Object.entries(settings)) {
+    if (key === "$config") continue;
+    if (key.startsWith(settingsPagePrefix)) {
+      const pageKey = key.slice(settingsPagePrefix.length);
+      if (!settingsPageKeys.includes(pageKey)) return `未知的设置页管控键 ${key}。`;
+      if (!(settingsPageControls as readonly string[]).includes(value as string))
+        return `${key} 的取值必须是 ${settingsPageControls.join(" / ")}。`;
+      continue;
+    }
+    if (!settingsLockKeys.includes(key)) return `未知的设置锁定键 ${key}。`;
+    if (typeof value !== "boolean") return `${key} 的取值必须是布尔开关。`;
+  }
+  return null;
+}
+
+/** settings 节：布尔锁 + `page.*` 三态管控；未给出的项回落到不锁定。 */
+export const settingsLockSchema = z.record(z.string().min(1).max(60), z.unknown()).superRefine((settings, ctx) => {
+  const error = validateSettingsSection(settings);
+  if (error) ctx.addIssue({ code: z.ZodIssueCode.custom, message: error });
+});
 
 /** settings 节允许写作配置库引用 `{ "$config": id }`，两种形态之外一律拒绝。 */
 export function isSettingsReference(value: unknown): boolean {
@@ -81,20 +145,34 @@ function refineSettingsSection(document: unknown, ctx: z.RefinementCtx) {
     return;
   }
   if (isSettingsReference(settings)) return;
-  if (!settingsLockSchema.safeParse(settings).success)
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["document", "settings"], message: "settings 节的取值必须是布尔开关。" });
+  const error = validateSettingsSection(settings as Record<string, unknown>);
+  if (error)
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["document", "settings"], message: error });
 }
 
 /**
  * time 节：云端按作用域（分组）调控的自动时间偏移。
  * - offsetSeconds：固定偏移秒数（正数把本机时间提前、负数延后）；
- * - auto：设备以集控端时钟为准持续自动校准偏移，优先于 offsetSeconds。
- * 两项都缺省或整个节被撤下时，设备恢复本机原有偏移。
+ * - auto：设备以集控端时钟为准持续自动校准偏移，优先于 offsetSeconds；
+ * - daily：每日自动偏移（对齐宿主「自动时间偏移」语义）——设备生效偏移为
+ *   offsetSeconds（缺省取接管前本机值）+ secondsPerDay ×（今天 − anchorDate 的整天数），
+ *   每天零点自动跨档；与 auto 互斥。
+ * 本节被撤下时，设备恢复本机原有偏移。
  */
+export const timeDailyAdjustSchema = z.object({
+  enabled: z.boolean(),
+  secondsPerDay: z.number().min(-86400).max(86400),
+  anchorDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+}).strict();
+
 export const timeSectionSchema = z.object({
   offsetSeconds: z.number().min(-86400).max(86400).optional(),
   auto: z.boolean().optional(),
-}).strict();
+  daily: timeDailyAdjustSchema.optional(),
+}).strict().refine(
+  (section) => !(section.auto === true && section.daily?.enabled === true),
+  { message: "auto（随集控校准）与 daily.enabled（每日自动偏移）互斥。" },
+);
 
 function refineTimeSection(document: unknown, ctx: z.RefinementCtx) {
   if (typeof document !== "object" || document === null || Array.isArray(document)) return;
@@ -107,7 +185,7 @@ function refineTimeSection(document: unknown, ctx: z.RefinementCtx) {
   if (!timeSectionSchema.safeParse(section).success)
     ctx.addIssue({
       code: z.ZodIssueCode.custom, path: ["document", "time"],
-      message: "time 节只接受 offsetSeconds（-86400..86400 的秒数）与 auto（布尔开关）。",
+      message: "time 节只接受 offsetSeconds（-86400..86400 秒）、auto（布尔）与 daily（enabled/secondsPerDay/anchorDate）。",
     });
 }
 
@@ -234,7 +312,8 @@ export function configurationSection(kind: string): string | null {
  * 配置文档的版本化结构校验：
  * - 根必须是 JSON 对象（拒绝数组/标量）；
  * - 可选的 `schemaVersion` 必须是 1..1000 的正整数（缺省视为 1，写入时补全）；
- * - 该类型对应的顶层节若存在，必须是对象。
+ * - 该类型对应的顶层节若存在，必须是对象；
+ * - automation 的载体是 `workflows` 数组（宿主文件是裸数组，入库统一包成 { workflows: [...] }）。
  * 更深的宿主内部结构无法在服务端可靠建模，故此处只做版本与形状层面的强校验。
  */
 export function configurationDocumentSchema(kind: ConfigurationKind) {
@@ -246,8 +325,13 @@ export function configurationDocumentSchema(kind: ConfigurationKind) {
     const value = document[section];
     if (value !== undefined && (typeof value !== "object" || value === null || Array.isArray(value)))
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: [section], message: `配置文档的 ${section} 节必须是对象。` });
+    if (kind === "automation") {
+      const list = document.workflows;
+      if (list !== undefined && (!Array.isArray(list) || list.some((entry) => typeof entry !== "object" || entry === null || Array.isArray(entry))))
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["workflows"], message: "自动化配置的 workflows 必须是工作流对象组成的数组。" });
+    }
     if (kind === "settings" && value !== undefined && !isSettingsReference(value) && !settingsLockSchema.safeParse(value).success)
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [section], message: "设置锁定配置的取值必须是布尔开关。" });
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [section], message: "设置锁定配置的取值必须是布尔开关或 page.* 三态管控。" });
   });
 }
 

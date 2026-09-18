@@ -26,7 +26,7 @@ function toggleDevices(ids: string[]) {
 }
 
 function openRoom(id: string) { roomId.value = id; }
-/** 单击设备查看已应用策略；先关掉教室弹窗，避免叠层。 */
+/** 单击设备看设备详情（内含生效策略明细入口）；先关掉教室弹窗，避免叠层。 */
 function inspect(id: string) { roomId.value = null; inspectId.value = id; }
 async function changed() { await refresh(); }
 </script>
@@ -68,8 +68,8 @@ async function changed() { await refresh(); }
     @inspect="inspect"
   />
   <TargetPickerDialog v-if="showTargets" @close="showTargets = false" />
-  <DevicePolicyDialog v-if="inspectId"
- :device-id="inspectId" @close="inspectId = null" />
+  <DeviceDetailDialog v-if="inspectId"
+ :device-id="inspectId" @close="inspectId = null" @changed="changed" />
 </template>
 
 <style scoped>

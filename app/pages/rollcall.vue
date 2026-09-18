@@ -94,7 +94,7 @@ async function remove() {
       </header>
       <p class="names">{{ roster.names.slice(0, 12).join("、") }}{{ roster.names.length > 12 ? " …" : "" }}</p>
       <footer>
-        <small>{{ roster.names.length }} 人 · R{{ roster.revision }}</small>
+        <small>{{ roster.names.length }} 人 · 第 {{ roster.revision }} 版</small>
         <div>
           <button type="button" class="ghost" @click="openEdit(roster)">编辑</button>
           <button type="button" class="ghost remove" @click="removing = roster">删除</button>

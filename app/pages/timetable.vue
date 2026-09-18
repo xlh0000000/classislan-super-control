@@ -6,7 +6,6 @@ import {
   emptyProfile,
   ensureClassPlan,
   findClassPlan,
-  newLayoutItem,
   newSubject,
   periodsOf,
   readProfile,
@@ -15,6 +14,8 @@ import {
   uuid,
   writeProfileDocument,
   type CiProfile,
+  type CiTimeLayout,
+  type CiTimeLayoutItem,
 } from "#shared/classisland-profile";
 import { resolveSubjectShortcut } from "#shared/subject-shortcut";
 
@@ -80,6 +81,7 @@ function weekdayLabel(value: number) { return WEEKDAYS.find((day) => day.value =
 
 function resetSelection() {
   activeCell.value = null;
+  clearPointHistory();
   activeGroupId.value = profile.value.classPlanGroups.some((group) => group.id === profile.value.selectedClassPlanGroupId)
     ? profile.value.selectedClassPlanGroupId
     : DEFAULT_CLASS_PLAN_GROUP_ID;
@@ -121,7 +123,7 @@ async function importFile(event: Event) {
     resetSelection();
     dirty.value = true;
     toast.ok("已导入档案内容，保存后将成为新的配置。");
-  } catch (err) { toast.err(fail(err, "无法解析该 JSON 文件。")); }
+  } catch (err) { toast.err(fail(err, "无法解析这个文件，请确认是导出的课表文件。")); }
   finally { if (fileInput.value) fileInput.value.value = ""; }
 }
 
@@ -142,7 +144,7 @@ async function save() {
     activeId.value = result.configurationId;
     await refresh();
     dirty.value = false;
-    toast.ok(`已保存为 R${result.revision}。`);
+    toast.ok(`已保存为第 ${result.revision} 版。`);
   } catch (err) { toast.err(fail(err, "保存失败。")); }
   finally { loading.value = false; }
 }
@@ -175,9 +177,19 @@ function dropSubject(id: string) {
 }
 
 function addLayout() {
-  const layout = { id: uuid(), name: `时间表${profile.value.timeLayouts.length + 1}`, layouts: standardLayoutItems(), extra: {} };
+  const layout: CiTimeLayout = { id: uuid(), name: `新时间表${profile.value.timeLayouts.length + 1}`, layouts: [], extra: {} };
   profile.value.timeLayouts.push(layout);
   activeLayoutId.value = layout.id;
+  markDirty();
+}
+/** 对应原生「复制」：整份深拷贝一张当前时间表再改，不用从零编排。 */
+function duplicateLayout() {
+  const layout = activeLayout.value;
+  if (!layout) return;
+  const copy = JSON.parse(JSON.stringify({ ...layout, name: `${layout.name} 副本` })) as CiTimeLayout;
+  copy.id = uuid();
+  profile.value.timeLayouts.push(copy);
+  activeLayoutId.value = copy.id;
   markDirty();
 }
 function removeLayout(id: string) {
@@ -194,8 +206,557 @@ function dropLayout(id: string) {
   activeLayoutId.value = profile.value.timeLayouts[0]?.id ?? "";
   markDirty();
 }
-function addLayoutItem() { activeLayout.value?.layouts.push(newLayoutItem(0)); markDirty(); }
-function removeLayoutItem(index: number) { activeLayout.value?.layouts.splice(index, 1); markDirty(); }
+/* —— ClassIsland 式时间点编辑（对齐原生时间表页：先选点，再顺延插入）—— */
+/** 多选集合：末位为“主选”，驱动检查器、圆点与浮条；框选/Shift 点选改集合。 */
+const selection = ref<number[]>([]);
+const selectedPoint = computed<number | null>({
+  get: () => (selection.value.length ? selection.value[selection.value.length - 1]! : null),
+  set: (value) => { selection.value = value === null ? [] : [value]; },
+});
+const selectedSet = computed(() => new Set(selection.value));
+function toggleSelect(index: number) {
+  const at = selection.value.indexOf(index);
+  if (at >= 0) selection.value.splice(at, 1);
+  else selection.value.push(index);
+}
+const defaultClassMinutes = ref(40);
+const defaultBreakMinutes = ref(10);
+type PointSnapshot = { layouts: string; selected: number | null };
+const pointUndo = ref<PointSnapshot[]>([]);
+const pointRedo = ref<PointSnapshot[]>([]);
+
+const selectedItem = computed<CiTimeLayoutItem | null>(() => {
+  const items = activeLayout.value?.layouts ?? [];
+  const at = selectedPoint.value;
+  return at !== null && at >= 0 && at < items.length ? items[at]! : null;
+});
+const breakNameOptions = computed(() => {
+  const names = new Set<string>();
+  for (const layout of profile.value.timeLayouts)
+    for (const item of layout.layouts)
+      if (item.timeType === 1 && item.breakName.trim()) names.add(item.breakName.trim());
+  return [...names];
+});
+
+const isMarker = (item: CiTimeLayoutItem) => item.timeType === 2 || item.timeType === 3;
+function toMinutes(clock: string): number {
+  const [h, m] = clock.split(":");
+  return (Number(h) || 0) * 60 + (Number(m) || 0);
+}
+function fromMinutes(total: number): string {
+  const clamped = Math.max(0, Math.min(23 * 60 + 59, Math.round(total)));
+  return `${String(Math.floor(clamped / 60)).padStart(2, "0")}:${String(clamped % 60).padStart(2, "0")}`;
+}
+function typeLabel(value: number): string { return TIME_TYPES.find((type) => type.value === value)?.label ?? String(value); }
+/** 该位置是第几节「上课」（0 起），与课表网格的行一一对应。 */
+function periodOrdinal(index: number): number {
+  const items = activeLayout.value?.layouts ?? [];
+  return items.slice(0, index + 1).filter((item) => item.timeType === 0).length - 1;
+}
+
+function pushPointHistory() {
+  const layout = activeLayout.value;
+  if (!layout) return;
+  pointUndo.value.push({ layouts: JSON.stringify(layout.layouts), selected: selectedPoint.value });
+  if (pointUndo.value.length > 60) pointUndo.value.shift();
+  pointRedo.value = [];
+}
+function restorePointSnapshot(target: "undo" | "redo") {
+  const layout = activeLayout.value;
+  if (!layout) return;
+  const stack = target === "undo" ? pointUndo.value : pointRedo.value;
+  const other = target === "undo" ? pointRedo.value : pointUndo.value;
+  const snapshot = stack.pop();
+  if (!snapshot) return;
+  other.push({ layouts: JSON.stringify(layout.layouts), selected: selectedPoint.value });
+  layout.layouts = JSON.parse(snapshot.layouts) as CiTimeLayoutItem[];
+  selectedPoint.value = snapshot.selected;
+  markDirty();
+}
+function clearPointHistory() {
+  selectedPoint.value = null;
+  pointUndo.value = [];
+  pointRedo.value = [];
+}
+watch(baseLayoutId, clearPointHistory);
+
+/**
+ * 与原生 AddTimeLayoutItem 同规则：新点从选中点的结束时间起笔，长度取默认时长；
+ * 有空间但不够则缩短。差别在「完全没缝」：原生直接拒绝，这里把后续时间点整体后移让位。
+ */
+function addPoint(timeType: number) {
+  const layout = activeLayout.value;
+  if (!layout) return;
+  const items = layout.layouts;
+  const selected = selectedItem.value;
+  let base = selected ? toMinutes(selected.endTime) : 8 * 60;
+  let length = timeType === 0 ? Math.max(1, defaultClassMinutes.value) : timeType === 1 ? Math.max(1, defaultBreakMinutes.value) : 0;
+  let shiftTail = 0;
+  if (selected) {
+    const index = items.indexOf(selected);
+    if (timeType !== 2 && timeType !== 3 && index < items.length - 1) {
+      const next = items.slice(index + 1).find((item) => item.timeType !== 2);
+      if (next) {
+        const nextStart = toMinutes(next.startTime);
+        if (nextStart <= base) {
+          if (index !== 0) {
+            const maxEnd = Math.max(...items.map((item) => toMinutes(item.endTime)));
+            if (maxEnd + length > DAY_END) { toast.err("后面已经没有时间了。"); return; }
+            shiftTail = length;
+            toast.ok(`已将后续时间点整体后移 ${length} 分钟。`);
+          } else {
+            base = toMinutes(selected.startTime) - length;
+            if (base < 0) { toast.err("没有合适的位置来插入新的时间点。"); return; }
+            toast.ok("已向前插入了新的时间点。");
+          }
+        }
+        if (!shiftTail && nextStart < base + length) {
+          toast.ok("没有足够的空间完全插入该时间点，已缩短时间点长度。");
+          length = Math.max(0, nextStart - base);
+        }
+      }
+    }
+    if (timeType === 2 || timeType === 3) {
+      if (items.some((item) => item.timeType === timeType && toMinutes(item.startTime) === base)) {
+        toast.err(timeType === 2 ? "这里已经存在一条分割线。" : "这里已经存在一个行动。");
+        return;
+      }
+    }
+  }
+  if (base > DAY_END) { toast.err("后面已经没有时间了。"); return; }
+  pushPointHistory();
+  if (shiftTail) {
+    for (const it of items) {
+      if (toMinutes(it.startTime) >= base) {
+        it.startTime = fromMinutes(toMinutes(it.startTime) + shiftTail);
+        it.endTime = fromMinutes(toMinutes(it.endTime) + shiftTail);
+      }
+    }
+  }
+  const item: CiTimeLayoutItem = { startTime: fromMinutes(base), endTime: fromMinutes(base + length), timeType, breakName: "", isHideDefault: false, defaultClassId: "", extra: {} };
+  const insertAt = items.findIndex((existing) => toMinutes(existing.startTime) > base);
+  if (insertAt < 0) items.push(item);
+  else items.splice(insertAt, 0, item);
+  selectedPoint.value = insertAt < 0 ? items.length - 1 : insertAt;
+  markDirty();
+}
+
+/** 创建副本：等长接到选中点后面，越界则钳到 23:59。 */
+function duplicatePoint() {
+  const layout = activeLayout.value;
+  const selected = selectedItem.value;
+  if (!layout || !selected) { toast.err("先选中一个时间点。"); return; }
+  const base = toMinutes(selected.endTime);
+  const length = Math.max(0, toMinutes(selected.endTime) - toMinutes(selected.startTime));
+  if (base > 23 * 60 + 59) { toast.err("后面已经没有时间了。"); return; }
+  const copy = JSON.parse(JSON.stringify(selected)) as CiTimeLayoutItem;
+  copy.startTime = fromMinutes(base);
+  copy.endTime = fromMinutes(Math.min(base + length, 23 * 60 + 59));
+  pushPointHistory();
+  const items = layout.layouts;
+  const insertAt = items.findIndex((existing) => toMinutes(existing.startTime) > base);
+  if (insertAt < 0) items.push(copy);
+  else items.splice(insertAt, 0, copy);
+  selectedPoint.value = insertAt < 0 ? items.length - 1 : insertAt;
+  toast.ok("已创建时间点副本。");
+  markDirty();
+}
+
+function deletePoint() {
+  const layout = activeLayout.value;
+  if (!layout || !selection.value.length) return;
+  pushPointHistory();
+  const doomed = new Set(selection.value);
+  const first = Math.min(...doomed);
+  layout.layouts = layout.layouts.filter((_, i) => !doomed.has(i));
+  selectedPoint.value = layout.layouts.length ? Math.max(0, Math.min(first - 1, layout.layouts.length - 1)) : null;
+  markDirty();
+}
+
+/** 对应原生「刷新」：手改时间后按开始时间重新排序。 */
+function sortPoints() {
+  const layout = activeLayout.value;
+  if (!layout) return;
+  pushPointHistory();
+  layout.layouts.sort((a, b) => toMinutes(a.startTime) - toMinutes(b.startTime));
+  selectedPoint.value = null;
+  markDirty();
+  toast.ok("已按开始时间重新排序。");
+}
+
+function setPointType(value: number) {
+  const item = selectedItem.value;
+  if (!item || item.timeType === value) return;
+  item.timeType = value;
+  if (isMarker(item)) item.endTime = item.startTime;
+  markDirty();
+}
+
+/** 对应原生「覆盖现有课程」：把所有引用这张时间表的课表里该节的科目刷成默认课程。 */
+function overwriteAllSubjects() {
+  const layout = activeLayout.value;
+  const item = selectedItem.value;
+  const at = selectedPoint.value;
+  if (!layout || !item || at === null) return;
+  if (!item.defaultClassId) { toast.err("先选一个默认课程。"); return; }
+  const ordinal = periodOrdinal(at);
+  const subjectLabelValue = subjectName(profile.value, item.defaultClassId);
+  pending.value = {
+    title: "覆盖现有课程",
+    description: `把所有引用「${layout.name}」的课表中第 ${ordinal + 1} 节的科目改为「${subjectLabelValue}」？`,
+    confirmText: "覆盖", danger: true, run: () => runOverwrite(layout.id, ordinal, item.defaultClassId),
+  };
+}
+function runOverwrite(layoutId: string, ordinal: number, subjectId: string) {
+  let touched = 0;
+  for (const plan of profile.value.classPlans) {
+    if (plan.timeLayoutId !== layoutId) continue;
+    const info = plan.classes[ordinal];
+    if (info) { info.subjectId = subjectId; touched += 1; }
+  }
+  toast.ok(touched ? `已覆盖 ${touched} 张课表的第 ${ordinal + 1} 节。` : "没有引用这张时间表的课表。");
+  markDirty();
+}
+
+/** 键盘习惯照搬原生：↑/↓ 换选（首尾环绕）、Delete 删除、Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y 撤销重做。 */
+function onPointKeydown(event: KeyboardEvent) {
+  if (tab.value !== "layouts" || pending.value) return;
+  const target = event.target as HTMLElement | null;
+  if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
+  const items = activeLayout.value?.layouts ?? [];
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    if (!items.length) return;
+    event.preventDefault();
+    const at = selectedPoint.value;
+    const delta = event.key === "ArrowDown" ? 1 : -1;
+    selectedPoint.value = at === null
+      ? (event.key === "ArrowDown" ? 0 : items.length - 1)
+      : (at + delta + items.length) % items.length;
+    return;
+  }
+  if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "z") {
+    event.preventDefault();
+    restorePointSnapshot(event.shiftKey ? "redo" : "undo");
+    return;
+  }
+  if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "y") {
+    event.preventDefault();
+    restorePointSnapshot("redo");
+    return;
+  }
+  if ((event.key === "Delete" || event.key === "Backspace") && selectedPoint.value !== null) {
+    event.preventDefault();
+    deletePoint();
+  }
+}
+onMounted(() => window.addEventListener("keydown", onPointKeydown));
+onBeforeUnmount(() => window.removeEventListener("keydown", onPointKeydown));
+watch([defaultClassMinutes, defaultBreakMinutes], () => {
+  if (import.meta.client) localStorage.setItem("classisland-control-timetable-point-minutes", `${defaultClassMinutes.value},${defaultBreakMinutes.value}`);
+});
+
+/* —— 时间轴画布：照搬原生 TimeLineListControl 的块拖拽交互 ——
+ * 竖轴固定 0–24 时，px/分 = 1.8（原生默认 Scale=3）；
+ * 拖动一律落到 5 分钟绝对网格；「吸附」= 原生时间点吸附：改边/平移时相邻点跟着走。 */
+const stickyPoints = ref(true);
+const showAddFlyout = ref(true);
+const tlScroll = ref<HTMLElement>();
+watch(selectedPoint, () => { showAddFlyout.value = true; });
+
+const pxPerMin = 0.6 * 3;
+const RULER_LABEL_MIN = 30;
+const RULER_LINE_MIN = 15;
+const rulerLabels = computed(() => {
+  const out: number[] = [];
+  for (let v = 0; v < 24 * 60; v += RULER_LABEL_MIN) out.push(v);
+  return out;
+});
+const canvasStyle = computed(() => ({
+  height: `${1440 * pxPerMin}px`,
+  "--tl-grid": `repeating-linear-gradient(to bottom, var(--line-soft) 0 1px, transparent 1px ${RULER_LINE_MIN * pxPerMin}px)`,
+}));
+
+const yOf = (clock: string) => toMinutes(clock) * pxPerMin;
+function blockHeight(item: CiTimeLayoutItem) {
+  return isMarker(item) ? 6 : Math.max((toMinutes(item.endTime) - toMinutes(item.startTime)) * pxPerMin, 1);
+}
+function blockStyle(item: CiTimeLayoutItem) {
+  return { top: `${yOf(item.startTime)}px`, height: `${blockHeight(item)}px` };
+}
+function durationText(item: CiTimeLayoutItem) {
+  const total = toMinutes(item.endTime) - toMinutes(item.startTime);
+  return total >= 60 ? `${Math.floor(total / 60)} 时 ${total % 60} 分` : `${total} 分`;
+}
+
+/** prev/next 取跳过分割线与行动的最近上课/课间点，同原生 Prev/NextTimePoint。 */
+function timeNeighbors(index: number) {
+  const items = activeLayout.value?.layouts ?? [];
+  let prev: CiTimeLayoutItem | null = null;
+  let next: CiTimeLayoutItem | null = null;
+  for (let i = index - 1; i >= 0; i -= 1) { const it = items[i]; if (it && !isMarker(it)) { prev = it; break; } }
+  for (let i = index + 1; i < items.length; i += 1) { const it = items[i]; if (it && !isMarker(it)) { next = it; break; } }
+  return { prev, next };
+}
+/** 钉在原边界上的标记随边界一起挪（原生 DragAdjoiningSeparator）。 */
+function dragAdjoiningMarkers(oldClock: string, newClock: string) {
+  const layout = activeLayout.value;
+  if (!layout || oldClock === newClock) return;
+  for (const marker of layout.layouts)
+    if (isMarker(marker) && marker.startTime === oldClock) { marker.startTime = newClock; marker.endTime = newClock; }
+}
+
+const DAY_END = 23 * 60 + 59;
+const snap5 = (min: number) => Math.round(min / 5) * 5;
+const clampMin = (min: number) => Math.max(0, Math.min(DAY_END, min));
+
+type DragMode = "move" | "start" | "end" | "marker";
+let drag: {
+  mode: DragMode;
+  /** 参与本次拖动的全部下标（多选整组平移时 >1），anchor 为按下的那块。 */
+  indexes: number[];
+  anchor: number;
+  pointerId: number;
+  startY: number;
+  orig: Map<CiTimeLayoutItem, [number, number]>;
+  historyPushed: boolean;
+  moved: boolean;
+} | null = null;
+
+/** 组内平移时找“集合外”的相邻点：跳过选中的与分割线/行动。 */
+function outerNeighbor(index: number, dir: -1 | 1, skip: Set<number>): CiTimeLayoutItem | null {
+  const items = activeLayout.value?.layouts ?? [];
+  for (let i = index + dir; i >= 0 && i < items.length; i += dir) {
+    if (skip.has(i)) continue;
+    const it = items[i]!;
+    if (!isMarker(it)) return it;
+  }
+  return null;
+}
+
+function startDrag(event: PointerEvent, index: number, mode: DragMode) {
+  const layout = activeLayout.value;
+  const item = layout?.layouts[index];
+  if (!layout || !item) return;
+  if (!selection.value.includes(index)) selection.value = [index];
+  const indexes = mode === "move" && selection.value.length > 1 ? [...selection.value] : [index];
+  const orig = new Map<CiTimeLayoutItem, [number, number]>();
+  for (const i of indexes) {
+    const it = layout.layouts[i];
+    if (it) orig.set(it, [toMinutes(it.startTime), toMinutes(it.endTime)]);
+  }
+  drag = { mode, indexes, anchor: index, pointerId: event.pointerId, startY: event.clientY, orig, historyPushed: false, moved: false };
+  (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+  event.preventDefault();
+}
+function onBlockPointerDown(event: PointerEvent, index: number, mode: DragMode) {
+  if (event.shiftKey) {
+    toggleSelect(index);
+    return;
+  }
+  startDrag(event, index, mode);
+}
+
+/** 多选整组平移：每块独立吸附到 5 分钟网格、保时长；任一成员越界或撞集合外邻居则整体不动。 */
+function dragGroupMove(deltaMin: number) {
+  const layout = activeLayout.value;
+  if (!layout || !drag) return;
+  const skip = new Set(drag.indexes);
+  const moves: { item: CiTimeLayoutItem; start: number; end: number }[] = [];
+  for (const i of drag.indexes) {
+    const it = layout.layouts[i];
+    const o = it ? drag.orig.get(it) : undefined;
+    if (!it || !o) return;
+    const start = clampMin(snap5(o[0] + deltaMin));
+    const end = start + (o[1] - o[0]);
+    if (end > DAY_END) return;
+    moves.push({ item: it, start, end });
+  }
+  for (const m of moves) {
+    const idx = layout.layouts.indexOf(m.item);
+    const prev = outerNeighbor(idx, -1, skip);
+    const next = outerNeighbor(idx, 1, skip);
+    if (prev && toMinutes(prev.endTime) > m.start) return;
+    if (next && toMinutes(next.startTime) < m.end) return;
+  }
+  for (const m of moves) {
+    const oldStart = m.item.startTime;
+    const oldEnd = m.item.endTime;
+    m.item.startTime = fromMinutes(m.start);
+    m.item.endTime = fromMinutes(m.end);
+    dragAdjoiningMarkers(oldStart, m.item.startTime);
+    dragAdjoiningMarkers(oldEnd, m.item.endTime);
+  }
+}
+
+function onDragMove(event: PointerEvent) {
+  if (!drag || event.pointerId !== drag.pointerId) return;
+  const layout = activeLayout.value;
+  const item = layout?.layouts[drag.anchor];
+  if (!layout || !item) return;
+  const deltaMin = (event.clientY - drag.startY) / pxPerMin;
+  if (!drag.moved && Math.abs(deltaMin) < 1) return;
+  // 一次拖动 = 一条撤销记录，且快照必须在首次改动前压入。
+  if (!drag.historyPushed) { pushPointHistory(); drag.historyPushed = true; }
+  drag.moved = true;
+
+  if (drag.mode === "marker") {
+    const at = fromMinutes(clampMin(snap5(drag.orig.get(item)![0] + deltaMin)));
+    item.startTime = at;
+    item.endTime = at;
+    return;
+  }
+  if (drag.mode === "move" && drag.indexes.length > 1) {
+    dragGroupMove(deltaMin);
+    return;
+  }
+  const [origStart, origEnd] = drag.orig.get(item)!;
+  let newStart: number;
+  let newEnd: number;
+  if (drag.mode === "move") {
+    const duration = origEnd - origStart;
+    newStart = clampMin(snap5(origStart + deltaMin));
+    newEnd = newStart + duration;
+    if (newEnd > DAY_END) return;
+  } else if (drag.mode === "start") {
+    newStart = clampMin(snap5(origStart + deltaMin));
+    newEnd = toMinutes(item.endTime);
+    if (newStart >= newEnd) return;
+  } else {
+    newStart = toMinutes(item.startTime);
+    newEnd = clampMin(snap5(origEnd + deltaMin));
+    if (newEnd <= newStart) return;
+  }
+  const { prev, next } = timeNeighbors(drag.anchor);
+  const sticky = stickyPoints.value;
+  if (prev && newStart < toMinutes(prev.endTime)) {
+    if (!sticky || toMinutes(prev.startTime) >= newStart) return;
+    prev.endTime = fromMinutes(newStart);
+  }
+  if (next && newEnd > toMinutes(next.startTime)) {
+    if (!sticky || toMinutes(next.endTime) <= newEnd) return;
+    next.startTime = fromMinutes(newEnd);
+  }
+  const oldStart = item.startTime;
+  const oldEnd = item.endTime;
+  item.startTime = fromMinutes(newStart);
+  item.endTime = fromMinutes(newEnd);
+  dragAdjoiningMarkers(oldStart, item.startTime);
+  dragAdjoiningMarkers(oldEnd, item.endTime);
+}
+function endDrag(event: PointerEvent) {
+  if (!drag || event.pointerId !== drag.pointerId) return;
+  const layout = activeLayout.value;
+  // 原生在分割线/行动落位后自动归位排序。
+  if (layout && drag.mode === "marker" && drag.moved) {
+    const items = layout.layouts;
+    const movedItem = items.splice(drag.anchor, 1)[0];
+    if (movedItem) {
+      const at = items.findIndex((existing) => toMinutes(existing.startTime) > toMinutes(movedItem.startTime));
+      if (at < 0) { items.push(movedItem); selectedPoint.value = items.length - 1; }
+      else { items.splice(at, 0, movedItem); selectedPoint.value = at; }
+    }
+  }
+  if (drag.moved) markDirty();
+  drag = null;
+}
+
+/* —— 空白处拖框选：与块的时间范围纵向相交即选中；拖到上下边缘时自动滚动 —— */
+const marquee = ref<{ x0: number, y0: number, x1: number, y1: number } | null>(null);
+let marqueePointerId: number | null = null;
+let marqueeCanvas: HTMLElement | null = null;
+let marqueeClientY = 0;
+let marqueeTimer: ReturnType<typeof setTimeout> | null = null;
+const MARQUEE_EDGE = 36;
+function canvasPoint(event: PointerEvent) {
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+}
+function stopMarqueeLoop() {
+  if (marqueeTimer) clearTimeout(marqueeTimer);
+  marqueeTimer = null;
+  marqueeCanvas = null;
+}
+onUnmounted(stopMarqueeLoop);
+function marqueeTick() {
+  marqueeTimer = null;
+  const scroller = tlScroll.value;
+  if (!marquee.value || !scroller || !marqueeCanvas) return;
+  const box = scroller.getBoundingClientRect();
+  let delta = 0;
+  if (marqueeClientY < box.top + MARQUEE_EDGE) delta = -Math.min(16, (box.top + MARQUEE_EDGE - marqueeClientY) / 2);
+  else if (marqueeClientY > box.bottom - MARQUEE_EDGE) delta = Math.min(16, (marqueeClientY - (box.bottom - MARQUEE_EDGE)) / 2);
+  if (delta) {
+    const max = scroller.scrollHeight - scroller.clientHeight;
+    const next = Math.max(0, Math.min(max, scroller.scrollTop + delta));
+    if (next !== scroller.scrollTop) {
+      scroller.scrollTop = next;
+      // 指针没动但画布在动：按保存的屏幕坐标重算框选终点。
+      const rect = marqueeCanvas.getBoundingClientRect();
+      marquee.value = { ...marquee.value, y1: marqueeClientY - rect.top };
+    }
+  }
+  marqueeTimer = setTimeout(marqueeTick, 16);
+}
+function onCanvasPointerDown(event: PointerEvent) {
+  const at = canvasPoint(event);
+  marquee.value = { x0: at.x, y0: at.y, x1: at.x, y1: at.y };
+  marqueePointerId = event.pointerId;
+  marqueeCanvas = event.currentTarget as HTMLElement;
+  marqueeClientY = event.clientY;
+  // 先挂循环再抓指针：setPointerCapture 对失效指针会抛错，不能让滚动因此失联。
+  marqueeTimer = setTimeout(marqueeTick, 16);
+  (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+}
+function onCanvasPointerMove(event: PointerEvent) {
+  if (!marquee.value || event.pointerId !== marqueePointerId) return;
+  const at = canvasPoint(event);
+  marqueeClientY = event.clientY;
+  marquee.value = { ...marquee.value, x1: at.x, y1: at.y };
+}
+function onCanvasPointerUp(event: PointerEvent) {
+  if (!marquee.value || event.pointerId !== marqueePointerId) return;
+  const m = marquee.value;
+  marquee.value = null;
+  marqueePointerId = null;
+  stopMarqueeLoop();
+  if (Math.abs(m.x1 - m.x0) < 4 && Math.abs(m.y1 - m.y0) < 4) {
+    selectedPoint.value = null;
+    return;
+  }
+  const canvas = event.currentTarget as HTMLElement;
+  const rect = canvas.getBoundingClientRect();
+  const top = Math.min(m.y0, m.y1);
+  const bottom = Math.max(m.y0, m.y1);
+  const hits: number[] = [];
+  for (const el of canvas.querySelectorAll<HTMLElement>(".tl-block[data-index]")) {
+    const box = el.getBoundingClientRect();
+    if (box.bottom - rect.top > top && box.top - rect.top < bottom) {
+      const idx = Number(el.dataset.index);
+      if (Number.isInteger(idx)) hits.push(idx);
+    }
+  }
+  // 反序写入让最早的时间块成为主选。
+  selection.value = hits.reverse();
+}
+const marqueeStyle = computed(() => {
+  const m = marquee.value;
+  if (!m) return {};
+  return {
+    left: `${Math.min(m.x0, m.x1)}px`,
+    top: `${Math.min(m.y0, m.y1)}px`,
+    width: `${Math.abs(m.x1 - m.x0)}px`,
+    height: `${Math.abs(m.y1 - m.y0)}px`,
+  };
+});
+
+/** 进画布先滚到第一节附近，不用手动往上找。 */
+watch([tab, baseLayoutId], async () => {
+  if (tab.value !== "layouts") return;
+  await nextTick();
+  const first = activeLayout.value?.layouts[0];
+  if (tlScroll.value) tlScroll.value.scrollTop = Math.max(0, yOf(first?.startTime ?? "07:00") - 60);
+});
+
 function applyStandardTemplate() {
   if (!activeLayout.value) return;
   pending.value = {
@@ -206,8 +767,15 @@ function applyStandardTemplate() {
 }
 function dropStandardLayout() {
   if (!activeLayout.value) return;
+  pushPointHistory();
   activeLayout.value.layouts = standardLayoutItems();
+  clearPointHistoryAfterStandard();
   markDirty();
+}
+/** 标准作息整份替换后旧序号没意义，但保留一次撤销入口。 */
+function clearPointHistoryAfterStandard() {
+  selectedPoint.value = null;
+  pointRedo.value = [];
 }
 
 function addGroup() {
@@ -324,6 +892,11 @@ function syncGroupLayout() {
 
 onMounted(async () => {
   autoNext.value = localStorage.getItem("classisland-control-timetable-auto-next") !== "0";
+  const [savedClass, savedBreak] = (localStorage.getItem("classisland-control-timetable-point-minutes") ?? "").split(",").map(Number);
+  if (savedClass && Number.isFinite(savedClass) && savedBreak && Number.isFinite(savedBreak)) {
+    defaultClassMinutes.value = savedClass;
+    defaultBreakMinutes.value = savedBreak;
+  }
   const route = useRoute();
   // 配置库的「可视化编辑」用 ?config=<id> 深链进来，优先载入指定修订。
   const requested = String(route.query.config ?? "");
@@ -366,7 +939,7 @@ onMounted(async () => {
     <label>档案配置
       <select :value="activeId ?? ''" @change="loadConfig(($event.target as HTMLSelectElement).value)">
         <option value="">（未保存的新档案）</option>
-        <option v-for="item in profileConfigs" :key="item.configurationId" :value="item.configurationId">{{ item.name }} · R{{ item.revision }}</option>
+        <option v-for="item in profileConfigs" :key="item.configurationId" :value="item.configurationId">{{ item.name }} · 第 {{ item.revision }} 版</option>
       </select>
     </label>
     <label>档案名称<input v-model="profileName" @input="markDirty"></label>
@@ -449,22 +1022,98 @@ onMounted(async () => {
     <header class="panel-head">
       <label>编辑时间表<select v-model="baseLayoutId"><option v-for="layout in profile.timeLayouts" :key="layout.id" :value="layout.id">{{ layout.name }}</option></select></label>
       <button type="button" @click="addLayout">新增时间表</button>
+      <button type="button" @click="duplicateLayout">复制时间表</button>
       <button type="button" @click="applyStandardTemplate">生成标准作息</button>
       <button type="button" class="danger" @click="activeLayout && removeLayout(activeLayout.id)">删除当前时间表</button>
     </header>
     <template v-if="activeLayout">
       <label class="layout-name">时间表名称<input v-model="activeLayout.name" maxlength="40" @input="markDirty"></label>
-      <div class="rows">
-        <div v-for="(item, index) in activeLayout.layouts" :key="index" class="row layout-row">
-          <label>类型<select v-model.number="item.timeType" @change="markDirty"><option v-for="type in TIME_TYPES" :key="type.value" :value="type.value">{{ type.label }}</option></select></label>
-          <label>开始<input v-model="item.startTime" type="time" @change="markDirty"></label>
-          <label>结束<input v-model="item.endTime" type="time" :disabled="item.timeType === 2 || item.timeType === 3" @change="markDirty"></label>
-          <label>课间名称<input v-model="item.breakName" maxlength="30" :disabled="item.timeType !== 1" @input="markDirty"></label>
-          <button type="button" class="danger" @click="removeLayoutItem(index)">删除</button>
+      <div class="point-tools">
+        <div class="seg" aria-label="添加时间点">
+          <button type="button" title="在选中时间点之后接一节课" @click="addPoint(0)">上课</button>
+          <button type="button" title="在选中时间点之后接一段课间" @click="addPoint(1)">课间</button>
+          <button type="button" title="零长度标记，用来分隔上午/下午" @click="addPoint(2)">分割线</button>
+          <button type="button" title="零长度标记，到点触发一组行动" @click="addPoint(3)">行动</button>
+        </div>
+        <div class="seg" aria-label="时间点操作">
+          <button type="button" :disabled="!selectedItem" @click="duplicatePoint">创建副本</button>
+          <button type="button" :disabled="!pointUndo.length" @click="restorePointSnapshot('undo')">撤销</button>
+          <button type="button" :disabled="!pointRedo.length" @click="restorePointSnapshot('redo')">重做</button>
+          <button type="button" :disabled="!selectedItem" class="danger" @click="deletePoint">删除</button>
+          <button type="button" title="按开始时间重新排序" @click="sortPoints">刷新排序</button>
+        </div>
+        <div class="point-length">
+          <label>默认上课（分）<input v-model.number="defaultClassMinutes" type="number" min="1" max="600"></label>
+          <label>默认课间（分）<input v-model.number="defaultBreakMinutes" type="number" min="1" max="600"></label>
+          <label class="check"><input v-model="stickyPoints" type="checkbox">时间点吸附</label>
         </div>
       </div>
-      <button type="button" class="add-item" @click="addLayoutItem">新增时间点</button>
-      <p class="hint">共 {{ activeLayout.layouts.length }} 个时间点，其中 {{ periods.length }} 节“上课”。</p>
+      <div class="point-body">
+        <div ref="tlScroll" class="tl-scroll">
+          <div class="tl-canvas" :style="canvasStyle" @pointerdown.self="onCanvasPointerDown" @pointermove.self="onCanvasPointerMove" @pointerup.self="onCanvasPointerUp" @pointercancel.self="onCanvasPointerUp">
+            <span v-for="label in rulerLabels" :key="label" class="tl-label" :style="{ top: `${label * pxPerMin}px` }">{{ fromMinutes(label) }}</span>
+            <div
+              v-for="(item, index) in activeLayout.layouts"
+              :key="index"
+              class="tl-block"
+              :data-index="index"
+              :data-type="item.timeType"
+              :data-active="selectedSet.has(index)"
+              :style="blockStyle(item)"
+              :title="`${typeLabel(item.timeType)} ${item.startTime}–${item.endTime}`"
+              @pointerdown="onBlockPointerDown($event, index, isMarker(item) ? 'marker' : 'move')"
+              @pointermove="onDragMove"
+              @pointerup="endDrag"
+              @pointercancel="endDrag"
+            >
+              <span v-if="blockHeight(item) >= 18" class="tl-text">
+                <strong>{{ item.timeType === 0 ? `第 ${periodOrdinal(index) + 1} 节 · ` : "" }}{{ item.startTime }} – {{ item.endTime }}</strong>
+                <small>{{ item.timeType === 1 ? (item.breakName || "课间休息") : durationText(item) }}</small>
+              </span>
+              <template v-if="index === selectedPoint">
+                <template v-if="!isMarker(item)">
+                  <span class="tl-thumb" data-edge="top" @pointerdown.stop="startDrag($event, index, 'start')" @pointermove="onDragMove" @pointerup="endDrag" @pointercancel="endDrag"></span>
+                  <span class="tl-thumb" data-edge="bottom" @pointerdown.stop="startDrag($event, index, 'end')" @pointermove="onDragMove" @pointerup="endDrag" @pointercancel="endDrag"></span>
+                </template>
+                <button type="button" class="tl-del" @pointerdown.stop @click.stop="deletePoint">删除</button>
+              </template>
+            </div>
+            <div v-if="selection.length === 1 && selectedItem && !isMarker(selectedItem) && showAddFlyout" class="tl-flyout" :style="{ top: `${yOf(selectedItem.endTime) + 10}px` }">
+              <span class="tl-flyout-label">添加</span>
+              <button type="button" :data-suggest="selectedItem.timeType === 1 ? 'true' : 'false'" @click="addPoint(0)">上课</button>
+              <button type="button" :data-suggest="selectedItem.timeType === 0 ? 'true' : 'false'" @click="addPoint(1)">课间</button>
+              <button type="button" class="ghost" title="收起" @click="showAddFlyout = false">×</button>
+            </div>
+            <div v-if="marquee" class="tl-marquee" :style="marqueeStyle"></div>
+            <p v-if="!activeLayout.layouts.length" class="tl-empty">还没有时间点。</p>
+          </div>
+        </div>
+        <aside class="inspector">
+          <h3>编辑时间点</h3>
+          <template v-if="selectedItem">
+            <label>开始时间<input v-model="selectedItem.startTime" type="time" @change="markDirty"></label>
+            <label v-if="selectedItem.timeType !== 2 && selectedItem.timeType !== 3">结束时间<input v-model="selectedItem.endTime" type="time" @change="markDirty"></label>
+            <div class="seg chips-type">
+              <button v-for="type in TIME_TYPES.slice(0, 2)" :key="type.value" type="button" :data-active="selectedItem.timeType === type.value" @click="setPointType(type.value)">{{ type.label }}</button>
+            </div>
+            <template v-if="selectedItem.timeType === 0">
+              <label class="check"><input v-model="selectedItem.isHideDefault" type="checkbox" @change="markDirty">默认隐藏</label>
+              <p class="tip">默认隐藏后，只有正处在这个时间点时它才会显示。</p>
+              <label>默认课程
+                <select v-model="selectedItem.defaultClassId" @change="markDirty">
+                  <option value="">（不设置）</option>
+                  <option v-for="subject in profile.subjects" :key="subject.id" :value="subject.id">{{ subject.name }}</option>
+                </select>
+              </label>
+              <button type="button" :disabled="!selectedItem.defaultClassId" @click="overwriteAllSubjects">覆盖现有课程</button>
+            </template>
+            <label v-else-if="selectedItem.timeType === 1">课间名称<input v-model="selectedItem.breakName" list="break-name-options" maxlength="30" @input="markDirty"></label>
+          </template>
+          <p v-else class="muted">未选中时间点。</p>
+          <datalist id="break-name-options"><option v-for="name in breakNameOptions" :key="name" :value="name"></option></datalist>
+        </aside>
+      </div>
+      <p class="stat">共 {{ activeLayout.layouts.length }} 个时间点 · {{ periods.length }} 节“上课”</p>
     </template>
   </section>
 
@@ -533,11 +1182,67 @@ section { margin-top: 22px; }
 .row label.check { display: flex; align-items: center; gap: 9px; flex: 0 0 auto; padding-bottom: 8px; font-size: 12px; }
 .layout-name { display: grid; gap: 8px; margin-bottom: 20px; max-width: 360px; color: var(--ink-muted); font-size: 11px; letter-spacing: 0.6px; }
 .layout-name input { width: 100%; }
-.add-item { margin-top: 18px; }
 .hint, .muted { color: var(--ink-muted); font-size: 12px; line-height: 1.8; }
 .hint { margin-top: 16px; }
+.stat { margin: 14px 0 0; color: var(--ink-muted); font-size: 11px; letter-spacing: 0.6px; }
+
+/* 时间点编辑工具条：分组按钮（.seg 全局样式）+ 默认时长。 */
+.point-tools { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 18px; margin-top: 20px; }
+.point-length { display: flex; gap: 14px; margin-left: auto; }
+.point-length label { display: grid; gap: 6px; width: 132px; color: var(--ink-muted); font-size: 11px; letter-spacing: 0.6px; }
+.point-length input { width: 100%; }
+
+/* 左侧时间轴画布 + 右侧检查器。 */
+.point-body { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 22px; align-items: start; margin-top: 20px; }
+.point-length label.check { display: flex; align-items: center; gap: 8px; width: auto; padding-bottom: 8px; font-size: 12px; color: var(--ink-soft); }
+
+/* 时间轴画布：固定 24 小时竖轴，时间点是可拖的块（照搬原生 TimeLineListControl）。 */
+.tl-scroll { position: relative; max-height: 68vh; overflow: auto; border-top: 1px solid var(--line-strong); }
+.tl-canvas { position: relative; }
+.tl-canvas::before { content: ""; position: absolute; inset: 0 0 0 52px; background-image: var(--tl-grid); }
+.tl-label { position: absolute; left: 0; width: 44px; padding-right: 8px; transform: translateY(-50%); color: var(--ink-faint); font-size: 10px; font-variant-numeric: tabular-nums; text-align: right; pointer-events: none; }
+.tl-block {
+  position: absolute;
+  left: 56px;
+  right: 16px;
+  padding: 2px 10px;
+  text-align: left;
+  cursor: grab;
+  user-select: none;
+}
+.tl-block:active { cursor: grabbing; }
+.tl-block[data-type="0"] { background: var(--accent-wash-strong); border-left: 4px solid var(--accent); }
+.tl-block[data-type="1"] { background: var(--surface-2); border-left: 4px solid var(--line-strong); color: var(--ink-soft); }
+.tl-block[data-type="2"], .tl-block[data-type="3"] { padding: 0; background: repeating-linear-gradient(45deg, #8a857a 0 5px, #b8b2a4 5px 10px); cursor: move; }
+.tl-block[data-type="3"] { background: repeating-linear-gradient(45deg, #56604a 0 5px, #8fa07e 5px 10px); }
+.tl-block[data-active="true"] { outline: 2px solid var(--focus); outline-offset: 2px; z-index: 4; }
+.tl-marquee { position: absolute; z-index: 7; border: 1px solid var(--accent); background: var(--accent-wash); opacity: 0.55; pointer-events: none; }
+.tl-text { display: block; overflow: hidden; white-space: nowrap; }
+.tl-text strong { display: block; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tl-text small { display: block; color: var(--ink-muted); font-size: 10px; }
+.tl-thumb { position: absolute; left: 50%; width: 14px; height: 14px; transform: translate(-50%, -50%); border: 2px solid var(--accent); border-radius: 50%; background: var(--accent-ink); cursor: ns-resize; z-index: 5; }
+.tl-thumb[data-edge="top"] { top: 0; }
+.tl-thumb[data-edge="bottom"] { top: 100%; }
+.tl-del { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); min-height: 26px; padding: 0 10px; border: 0; background: var(--serious); color: var(--accent-ink); font-size: 11px; z-index: 5; }
+.tl-del:hover { border: 0; background: var(--critical); color: var(--accent-ink); }
+.tl-flyout { position: absolute; left: 56px; right: 16px; display: flex; justify-content: center; align-items: center; gap: 6px; padding: 5px 8px; border: 1px solid var(--line); background: var(--surface-glass); box-shadow: var(--shadow-pop); z-index: 6; }
+.tl-flyout-label { margin-right: 4px; color: var(--ink-muted); font-size: 11px; }
+.tl-flyout button { min-height: 26px; padding: 0 10px; font-size: 11px; }
+.tl-flyout button[data-suggest="true"] { border-color: var(--accent); color: var(--accent-strong); }
+.tl-empty { position: absolute; top: 90px; left: 0; right: 0; text-align: center; color: var(--ink-muted); font-size: 12px; }
+
+.inspector { display: grid; gap: 16px; padding: 22px; border: 1px solid var(--line-soft); background: var(--surface-1); position: sticky; top: 22px; }
+.inspector h3 { margin: 0; color: var(--ink-muted); font-size: 10px; font-weight: 400; letter-spacing: 1.2px; }
+.inspector label { display: grid; gap: 7px; color: var(--ink-muted); font-size: 11px; letter-spacing: 0.6px; }
+.inspector input, .inspector select { width: 100%; }
+.inspector label.check { display: flex; align-items: center; gap: 9px; font-size: 12px; }
+.inspector label.check input { width: 18px; height: 18px; }
+.tip { margin: 0; color: var(--ink-faint); font-size: 11px; line-height: 1.7; }
 @media (max-width: 1080px) {
   .board { grid-template-columns: 1fr; }
+  .point-body { grid-template-columns: 1fr; }
+  .inspector { position: static; }
+  .point-length { margin-left: 0; }
   .row { flex-wrap: wrap; }
   .row label { flex: 1 1 160px; }
 }

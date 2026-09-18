@@ -42,7 +42,7 @@ async function create() {
   if (!name) { toast.err("先填个名字。"); return; }
   let document: Record<string, unknown>;
   try { document = JSON.parse(form.document) as Record<string, unknown>; }
-  catch { toast.err("导入的不是有效 JSON。"); return; }
+  catch { toast.err("导入的文件内容格式有误。"); return; }
   busy.value = true;
   try {
     const created = await $fetch<{ configurationId: string }>("/api/v1/admin/configurations", {
@@ -65,11 +65,18 @@ async function importFile(event: Event) {
   input.value = "";
   if (!file) return;
   try {
-    form.document = JSON.stringify(JSON.parse(await file.text()), null, 2);
+    const parsed: unknown = JSON.parse(await file.text());
+    // ClassIsland 的自动化配置文件是裸数组；配置库统一存成 { workflows: [...] }。
+    if (Array.isArray(parsed)) {
+      form.kind = "automation";
+      form.document = JSON.stringify({ workflows: parsed }, null, 2);
+    } else {
+      form.document = JSON.stringify(parsed, null, 2);
+    }
     if (!form.name.trim()) form.name = file.name.replace(/\.json$/i, "");
     toast.ok("文件读好了。");
   } catch {
-    toast.err("这个文件不是有效 JSON。");
+    toast.err("这个文件的内容格式有误。");
   }
 }
 async function open(config: ConfigRow) {
@@ -101,7 +108,7 @@ async function confirmRollback() {
   rolling.value = true;
   try {
     await $fetch(`/api/v1/admin/configurations/${selected.value.configurationId}/rollback`, { method: "POST", headers: { origin: location.origin }, body: { revision: target.revision } });
-    toast.ok(`已回滚到 R${target.revision}，生成新修订。`);
+    toast.ok(`已回滚到第 ${target.revision} 版，生成新修订。`);
     await open(selected.value);
     await refresh();
   } catch (err) { toast.err((err as { data?: { message?: string } })?.data?.message ?? "回滚失败。"); }
@@ -128,7 +135,7 @@ async function confirmRollback() {
     <article v-for="item in rows" :key="item.configurationId">
       <div class="row-main">
         <strong>{{ item.name }}</strong>
-        <small>{{ kindLabel(item.kind) }} · R{{ item.revision }} · {{ item.createdAt }}</small>
+        <small>{{ kindLabel(item.kind) }} · 第 {{ item.revision }} 版 · {{ item.createdAt }}</small>
       </div>
       <div class="row-actions">
         <button type="button" @click="editTarget = item">编辑</button>
@@ -147,7 +154,7 @@ async function confirmRollback() {
     <form id="config-editor" class="editor" @submit.prevent="create">
       <label class="field"><span>名称</span><input v-model="form.name" maxlength="100" placeholder="例如：标准机房档案"></label>
       <label class="field"><span>类型</span><select v-model="form.kind"><option v-for="kind in kinds" :key="kind[0]" :value="kind[0]">{{ kind[1] }}</option></select></label>
-      <label class="field wide"><span>从 JSON 文件导入（可选）</span><input ref="fileInput" type="file" accept="application/json,.json" @change="importFile"></label>
+      <label class="field wide"><span>导入配置文件（可选）</span><input ref="fileInput" type="file" accept="application/json,.json" @change="importFile"></label>
     </form>
     <template #footer>
       <button type="button" class="ghost" @click="showEditor = false">取消</button>
@@ -159,15 +166,15 @@ async function confirmRollback() {
     <div v-if="loading" class="muted">加载中…</div>
     <template v-else>
       <div class="diff-controls">
-        <label class="field"><span>起始修订</span><select v-model.number="fromRev"><option v-for="rev in revisions" :key="rev.id" :value="rev.revision">R{{ rev.revision }}</option></select></label>
-        <label class="field"><span>目标修订</span><select v-model.number="toRev"><option v-for="rev in revisions" :key="rev.id" :value="rev.revision">R{{ rev.revision }}</option></select></label>
+        <label class="field"><span>起始修订</span><select v-model.number="fromRev"><option v-for="rev in revisions" :key="rev.id" :value="rev.revision">第 {{ rev.revision }} 版</option></select></label>
+        <label class="field"><span>目标修订</span><select v-model.number="toRev"><option v-for="rev in revisions" :key="rev.id" :value="rev.revision">第 {{ rev.revision }} 版</option></select></label>
         <button type="button" @click="loadDiff">比较差异</button>
       </div>
       <pre v-if="diff" class="diff">{{ JSON.stringify(diff, null, 2) }}</pre>
       <ul class="list revisions">
         <li v-for="rev in revisions" :key="rev.id">
           <div class="row-main">
-            <strong>R{{ rev.revision }} · {{ rev.name }}</strong>
+            <strong>第 {{ rev.revision }} 版 · {{ rev.name }}</strong>
             <small>{{ rev.createdAt }} · {{ rev.documentHash.slice(0, 12) }}</small>
           </div>
           <div class="row-actions"><button type="button" @click="rollback(rev.revision)">回滚到这里</button></div>
@@ -179,8 +186,8 @@ async function confirmRollback() {
   <DeployTargets v-if="deployTarget" :configuration-id="deployTarget.configurationId" :configuration-name="deployTarget.name" :revision="deployTarget.revision" @deployed="onDeployed" @close="deployTarget = null" />
   <ConfirmDialog
     v-if="pendingRollback"
-    :title="`回滚到 R${pendingRollback.revision}`"
-    :description="`「${pendingRollback.name}」会照 R${pendingRollback.revision} 重做一份新修订，旧的都留着。`"
+    :title="`回滚到第 ${pendingRollback.revision} 版`"
+    :description="`「${pendingRollback.name}」会照第 ${pendingRollback.revision} 版重做一份新修订，旧的都留着。`"
     confirm-text="回滚"
     :busy="rolling"
     @close="pendingRollback = null"

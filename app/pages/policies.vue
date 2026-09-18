@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { settingsLockFields } from "#shared/schemas";
+import { settingsLockFields, settingsPageFields, settingsPagePrefix } from "#shared/schemas";
 
 type Policy = { id: string; revision: number; name: string; documentHash: string; baseRevision: number | null; createdAt: string; assignmentId: string | null; scopeType: string | null; scopeId: string | null; priority: number | null; locks: string | null; mode: string | null };
 type ConfigRow = { configurationId: string; kind: string; name: string; revision: number };
@@ -49,20 +49,36 @@ function setOverride(key: SettingsKey, state: OverrideState) {
   settingsOverride[key] = state;
   rebuildDocument();
 }
-/** 时间偏移：不调控 / 固定秒数 / 自动对齐集控端时钟。 */
-const timeOptions: { value: TimeMode; label: string }[] = [
-  { value: "keep", label: "不调控" }, { value: "fixed", label: "固定偏移" }, { value: "auto", label: "自动对齐" },
+/** 设置页逐页管控：keep 不写入；放开/只读/隐藏对应 page.* 的三态取值。 */
+type PageKey = (typeof settingsPageFields)[number]["key"];
+type PageState = "keep" | "none" | "readonly" | "hidden";
+const pageOverrideOptions: { value: PageState; label: string }[] = [
+  { value: "keep", label: "不动" }, { value: "none", label: "放开" }, { value: "readonly", label: "只读" }, { value: "hidden", label: "隐藏" },
 ];
-type TimeMode = "keep" | "fixed" | "auto";
+const pageOverride = reactive(
+  Object.fromEntries(settingsPageFields.map((field) => [field.key, "keep"])) as Record<PageKey, PageState>,
+);
+function setPageOverride(key: PageKey, state: PageState) {
+  pageOverride[key] = state;
+  rebuildDocument();
+}
+/** 时间偏移：不调控 / 固定秒数 / 自动对齐集控端时钟 / 每日自动递增。 */
+const timeOptions: { value: TimeMode; label: string }[] = [
+  { value: "keep", label: "不调控" }, { value: "fixed", label: "固定偏移" }, { value: "auto", label: "自动对齐" }, { value: "daily", label: "每日自动" },
+];
+type TimeMode = "keep" | "fixed" | "auto" | "daily";
 const timeMode = ref<TimeMode>("keep");
 const timeOffsetSeconds = ref(0);
+const timeSecondsPerDay = ref(5);
 function setTimeMode(mode: TimeMode) {
   timeMode.value = mode;
   rebuildDocument();
 }
 /** 追加覆盖：在该目标已有策略之上只应用本次给出的项，而不是整份替换。 */
 const appendMode = ref(false);
-const overriddenCount = computed(() => settingsLockFields.filter((field) => settingsOverride[field.key] !== "keep").length);
+const overriddenCount = computed(() => settingsLockFields.filter((field) => settingsOverride[field.key] !== "keep").length
+  + settingsPageFields.filter((field) => pageOverride[field.key] !== "keep").length);
+const pageOverriddenCount = computed(() => settingsPageFields.filter((field) => pageOverride[field.key] !== "keep").length);
 /** 每个已选目标 = 一个作用域；逐个作用域发布同名修订。 */
 const scopeRows = computed(() => targets.value.map((target) => {
   if (target.type === "school")
@@ -94,22 +110,31 @@ function rebuildDocument() {
   const document: Record<string, unknown> = {};
   for (const section of SECTION_DEFS)
     if (sectionEnabled[section.key] && sectionConfigId[section.key]) document[section.key] = { $config: sectionConfigId[section.key] };
-  const settings: Record<string, boolean> = {};
+  const settings: Record<string, boolean | string> = {};
   for (const field of settingsLockFields) {
     const state = settingsOverride[field.key];
     if (state === "keep") continue;
     settings[field.key] = field.invert ? state === "unlock" : state === "lock";
   }
+  for (const field of settingsPageFields) {
+    const state = pageOverride[field.key];
+    if (state !== "keep") settings[`${settingsPagePrefix}${field.key}`] = state;
+  }
   if (Object.keys(settings).length) document.settings = settings;
-  // time 节：auto 由设备对齐集控端时钟，fixed 直接下发偏移秒数。
+  // time 节：auto 由设备对齐集控端时钟，fixed 直接下发偏移秒数，daily 每日自动递增（可带基线秒数）。
   if (timeMode.value === "auto") document.time = { auto: true };
   else if (timeMode.value === "fixed") document.time = { offsetSeconds: Number(timeOffsetSeconds.value) || 0 };
+  else if (timeMode.value === "daily") {
+    const perDay = Number(timeSecondsPerDay.value) || 0;
+    const base = Number(timeOffsetSeconds.value) || 0;
+    document.time = { ...(base ? { offsetSeconds: base } : {}), daily: { enabled: true, secondsPerDay: perDay } };
+  }
   form.document = JSON.stringify(document, null, 2);
 }
 function addLock(value: string) {
   const pointer = value.trim();
   if (!pointer) return;
-  if (!pointer.startsWith("/")) { toast.err("锁定路径必须是 JSON Pointer，例如 /profile。"); return; }
+  if (!pointer.startsWith("/")) { toast.err("锁定路径要以 / 开头，例如 /profile。"); return; }
   if (!lockList.value.includes(pointer)) lockList.value = [...lockList.value, pointer];
   lockInput.value = "";
 }
@@ -129,10 +154,14 @@ async function publish() {
   const name = form.name.trim() || autoName();
   let document: Record<string, unknown>;
   try { document = JSON.parse(form.document) as Record<string, unknown>; }
-  catch { toast.err("策略内容不是有效的 JSON。"); return; }
+  catch { toast.err("策略内容格式有误，请检查后再试。"); return; }
   if (!Object.keys(document).length) { toast.err("策略内容为空：勾选至少一个节，或在「更多」里填写内容。"); return; }
-  if (timeMode.value === "fixed" && (!Number.isFinite(timeOffsetSeconds.value) || Math.abs(timeOffsetSeconds.value) > 86400)) {
-    toast.err("时间偏移必须是 -86400 到 86400 之间的秒数。");
+  if ((timeMode.value === "fixed" || timeMode.value === "daily") && (!Number.isFinite(timeOffsetSeconds.value) || Math.abs(timeOffsetSeconds.value) > 86400)) {
+    toast.err("偏移秒数必须是 -86400 到 86400 之间的数。");
+    return;
+  }
+  if (timeMode.value === "daily" && (!Number.isFinite(timeSecondsPerDay.value) || Math.abs(timeSecondsPerDay.value) > 86400)) {
+    toast.err("每日递增秒数必须是 -86400 到 86400 之间的数。");
     return;
   }
   busy.value = true;
@@ -185,7 +214,7 @@ onMounted(() => { if (useRoute().query.new) showEditor.value = true; });
           <label class="toggle"><input v-model="sectionEnabled[section.key]" type="checkbox" @change="rebuildDocument"><span>{{ section.label }}</span></label>
           <select v-model="sectionConfigId[section.key]" :disabled="!sectionEnabled[section.key]" @change="rebuildDocument">
             <option value="">选择要引用的配置…</option>
-            <option v-for="config in configsOfKind(section.kind)" :key="config.configurationId" :value="config.configurationId">{{ config.name }} · R{{ config.revision }}</option>
+            <option v-for="config in configsOfKind(section.kind)" :key="config.configurationId" :value="config.configurationId">{{ config.name }} · 第 {{ config.revision }} 版</option>
           </select>
           <small v-if="sectionEnabled[section.key] && !configsOfKind(section.kind).length">配置库里还没有这类配置。</small>
         </div>
@@ -204,6 +233,17 @@ onMounted(() => { if (useRoute().query.new) showEditor.value = true; });
       </fieldset>
 
       <fieldset class="wide settings-override">
+        <legend>设置页管控<template v-if="pageOverriddenCount"> · 已设置 {{ pageOverriddenCount }} 页</template></legend>
+        <div v-for="field in settingsPageFields" :key="field.key" class="override-row">
+          <span class="text"><span>{{ field.label }}</span><small>只读 = 可见不可改；隐藏 = 从设置导航与深链中移除</small></span>
+          <div class="seg">
+            <button v-for="option in pageOverrideOptions" :key="option.value" type="button" :data-state="option.value" :data-active="pageOverride[field.key] === option.value ? 'true' : 'false'" @click="setPageOverride(field.key, option.value)">{{ option.label }}</button>
+          </div>
+        </div>
+        <p class="static">逐页管控精确到设置页的每个大项；「放开」会显式解除该页此前的限制。</p>
+      </fieldset>
+
+      <fieldset class="wide settings-override">
         <legend>时间偏移<template v-if="timeMode !== 'keep'"> · 已设置</template></legend>
         <div class="override-row">
           <span class="text"><span>设备时间</span><small>用集控端时间校正设备时间</small></span>
@@ -215,10 +255,20 @@ onMounted(() => { if (useRoute().query.new) showEditor.value = true; });
           <span class="text"><span>偏移秒数</span><small>正数提前、负数延后</small></span>
           <input v-model.number="timeOffsetSeconds" type="number" step="0.1" min="-86400" max="86400" @input="rebuildDocument">
         </div>
+        <template v-else-if="timeMode === 'daily'">
+          <div class="override-row">
+            <span class="text"><span>每日递增秒数</span><small>每天零点偏移自动累加该秒数（负数则递减）</small></span>
+            <input v-model.number="timeSecondsPerDay" type="number" step="0.1" min="-86400" max="86400" @input="rebuildDocument">
+          </div>
+          <div class="override-row">
+            <span class="text"><span>基线秒数（可选）</span><small>留空以设备接管前的本机偏移为基线</small></span>
+            <input v-model.number="timeOffsetSeconds" type="number" step="0.1" min="-86400" max="86400" @input="rebuildDocument">
+          </div>
+        </template>
       </fieldset>
 
       <details class="wide advanced">
-        <summary>更多：锁定路径与手工 JSON</summary>
+        <summary>更多：锁定路径与直接编辑内容</summary>
         <fieldset class="locks">
           <legend>锁定路径</legend>
           <div class="lock-add">
@@ -253,7 +303,7 @@ onMounted(() => { if (useRoute().query.new) showEditor.value = true; });
       <ul v-if="data.length" class="list">
         <li v-for="policy in data" :key="policy.id">
           <div class="row-main">
-            <strong>R{{ policy.revision }} · {{ policy.name }}</strong>
+            <strong>第 {{ policy.revision }} 版 · {{ policy.name }}</strong>
             <small>{{ scopeText(policy) }} · {{ policy.createdAt }}<em v-if="policy.mode === 'append'"> · 追加覆盖</em></small>
           </div>
           <span class="tag">{{ policy.assignmentId ? "生效中" : "历史" }}</span>

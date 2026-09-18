@@ -56,6 +56,8 @@ public sealed record AgentState
     /// <summary>服务端下发的单调 desired-state epoch；仅当成功应用后才推进。</summary>
     public long PolicyEpoch { get; init; }
     public string LastPolicyHash { get; init; } = "";
+    /// <summary>每日自动偏移的锚点日期（yyyy-MM-dd）：策略未给 anchorDate 时记首次生效日，重启不改锚。</summary>
+    public string TimeDailyAnchorDate { get; init; } = "";
     /// <summary>最近一次策略逐节应用结果，随轮询上报，用于区分 received/applied/failed。</summary>
     public Dictionary<string, string> AppliedSections { get; init; } = [];
     public string DevicePrivateKey { get; init; } = "";

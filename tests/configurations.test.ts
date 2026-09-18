@@ -22,6 +22,14 @@ describe("configuration document validation", () => {
     expect(configurationDocumentSchema("components").safeParse({ automation: ["allowed"] }).success).toBe(true);
   });
 
+  it("validates the automation workflows carrier", () => {
+    expect(configurationDocumentSchema("automation").safeParse({ workflows: [{ id: "a" }] }).success).toBe(true);
+    expect(configurationDocumentSchema("automation").safeParse({}).success).toBe(true);
+    expect(configurationDocumentSchema("automation").safeParse({ workflows: "bad" }).success).toBe(false);
+    expect(configurationDocumentSchema("automation").safeParse({ workflows: [null] }).success).toBe(false);
+    expect(configurationDocumentSchema("automation").safeParse({ workflows: [[1]] }).success).toBe(false);
+  });
+
   it("stamps a default schemaVersion when normalizing", () => {
     expect(normalizeConfigurationDocument("profile", { profile: { name: "x" } })).toEqual({ profile: { name: "x" }, schemaVersion: 1 });
     expect(normalizeConfigurationDocument("profile", { schemaVersion: 4 })).toEqual({ schemaVersion: 4 });

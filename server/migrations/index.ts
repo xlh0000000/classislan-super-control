@@ -500,7 +500,77 @@ const crashReports: Migration = {
     db.exec("CREATE INDEX IF NOT EXISTS idx_crash_reports_occurred ON crash_reports(occurred_at)");
   },
 };
-export const migrations: Migration[] = [baseline, taskOrchestration, enrollmentIdempotency, orgScopeRbac, policyEpochAndCas, taskPauseAndCancel, deviceResponseReplay, sessionsTable, enrollmentTokenTags, taskIdempotencyScope, auditCheckpoints, buildingLayout, policyAppendMode, deviceTransport, rollCallRoster, deviceTimetables, crashReports];
+
+const autoTasks: Migration = {
+  id: "0017-auto-tasks",
+  up(db) {
+    // 周期任务：调度定义按规则到期派生一次性任务实例；next_run_at 为 UTC 落库，
+    // 规则里的时刻是本地墙钟（tz_offset_minutes），单校场景固定偏移即可无夏令时歧义。
+    db.exec(`CREATE TABLE IF NOT EXISTS task_schedules (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      capability_id TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      targets TEXT NOT NULL DEFAULT '[]',
+      device_ids TEXT NOT NULL DEFAULT '[]',
+      repeat TEXT NOT NULL CHECK(repeat IN ('daily','weekly','monthly','interval')),
+      time_of_day TEXT,
+      weekdays TEXT,
+      day_of_month INTEGER,
+      interval_minutes INTEGER,
+      tz_offset_minutes INTEGER NOT NULL DEFAULT 480,
+      start_at TEXT NOT NULL,
+      end_at TEXT,
+      ttl_minutes INTEGER NOT NULL DEFAULT 60,
+      mode TEXT NOT NULL DEFAULT 'all' CHECK(mode IN ('all','fixed','percent')),
+      batch_size INTEGER,
+      percent INTEGER,
+      failure_threshold INTEGER NOT NULL DEFAULT 0,
+      max_concurrency INTEGER NOT NULL DEFAULT 0,
+      max_attempts INTEGER NOT NULL DEFAULT 1,
+      state TEXT NOT NULL DEFAULT 'active' CHECK(state IN ('active','paused','finished')),
+      next_run_at TEXT,
+      last_run_at TEXT,
+      last_task_id TEXT,
+      last_error TEXT,
+      created_by TEXT REFERENCES users(id),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    ) STRICT`);
+    db.exec("CREATE INDEX IF NOT EXISTS idx_task_schedules_due ON task_schedules(state, next_run_at)");
+
+    // 事件触发任务：device_offline 扫描 last_seen 超时，crash_threshold 在崩溃入库时评估。
+    db.exec(`CREATE TABLE IF NOT EXISTS triggers (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK(kind IN ('device_offline','crash_threshold')),
+      condition TEXT NOT NULL,
+      scope_type TEXT NOT NULL DEFAULT 'school' CHECK(scope_type IN ('school','organization')),
+      scope_id TEXT,
+      targets TEXT NOT NULL DEFAULT '[]',
+      capability_id TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      ttl_minutes INTEGER NOT NULL DEFAULT 60,
+      cooldown_minutes INTEGER NOT NULL DEFAULT 60,
+      state TEXT NOT NULL DEFAULT 'active' CHECK(state IN ('active','paused')),
+      last_fired_at TEXT,
+      last_task_id TEXT,
+      last_error TEXT,
+      created_by TEXT REFERENCES users(id),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    ) STRICT`);
+    // 触发台账：同一触发对同一设备一个故障期内只派生一次；设备恢复后被新事件重置。
+    db.exec(`CREATE TABLE IF NOT EXISTS trigger_fires (
+      trigger_id TEXT NOT NULL REFERENCES triggers(id) ON DELETE CASCADE,
+      device_id TEXT NOT NULL,
+      fired_at TEXT NOT NULL,
+      PRIMARY KEY(trigger_id, device_id)
+    ) STRICT`);
+  },
+};
+
+export const migrations: Migration[] = [baseline, taskOrchestration, enrollmentIdempotency, orgScopeRbac, policyEpochAndCas, taskPauseAndCancel, deviceResponseReplay, sessionsTable, enrollmentTokenTags, taskIdempotencyScope, auditCheckpoints, buildingLayout, policyAppendMode, deviceTransport, rollCallRoster, deviceTimetables, crashReports, autoTasks];
 
 /** 对除 schema_migrations 外的全部 schema 对象做稳定指纹，用于校验迁移记录与真实 schema 是否一致。 */
 export function schemaFingerprint(db: Database.Database) {

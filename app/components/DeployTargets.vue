@@ -45,7 +45,7 @@ async function deploy() {
 <template>
   <AppDialog
     :title="`下发配置：${configurationName}`"
-    :kicker="props.revision ? `当前修订 R${props.revision}` : '下发配置'"
+    :kicker="props.revision ? `当前是第 ${props.revision} 版` : '下发配置'"
     width="720px"
     @close="emit('close')"
   >
@@ -57,8 +57,8 @@ async function deploy() {
     <TargetTree compact />
     <ul v-if="result" class="result">
       <li v-for="target in result.targets" :key="`${target.scopeType}:${target.scopeId ?? ''}`">
-        <span>{{ targetLabel(target) }} · R{{ target.revision }} · {{ target.deviceCount }} 台</span>
-        <small v-if="target.replacedSection">已替换原有的 {{ result.section }}</small>
+        <span>{{ targetLabel(target) }} · 第 {{ target.revision }} 版 · {{ target.deviceCount }} 台</span>
+        <small v-if="target.replacedSection">已替换原有的{{ labelOf(POLICY_SECTION_LABELS, result.section) }}</small>
       </li>
     </ul>
     <template #footer>

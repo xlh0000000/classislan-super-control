@@ -38,7 +38,7 @@ const kindTitle = computed(() => CONFIG_KIND_LABELS[props.kind] ?? props.kind);
 /** 目前只有档案与组件布局有可靠的结构定义，其余类型只能编辑 JSON。 */
 const hasVisual = computed(() => props.kind === "profile" || props.kind === "components");
 const showVisual = computed(() => hasVisual.value && tab.value === "visual");
-const tabs = computed(() => (hasVisual.value ? [{ key: "visual", label: "可视化" }, { key: "json", label: "JSON" }] : []));
+const tabs = computed(() => (hasVisual.value ? [{ key: "visual", label: "可视化" }, { key: "json", label: "源码" }] : []));
 
 function buildModels() {
   profile.value = props.kind === "profile" ? readProfileSettings(source.value) : null;
@@ -62,14 +62,14 @@ function applyJson(): boolean {
   try {
     const parsed: unknown = JSON.parse(jsonText.value);
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      toast.err("配置的根必须是 JSON 对象。");
+      toast.err("内容格式有误：整体应为一个对象。");
       return false;
     }
     source.value = parsed as Record<string, unknown>;
     buildModels();
     return true;
   } catch {
-    toast.err("JSON 语法不对，检查一下。");
+    toast.err("内容格式有误，请检查后再切换。");
     return false;
   }
 }
@@ -107,7 +107,7 @@ async function save() {
     source.value = currentDocument();
     buildModels();
     if (tab.value === "json") jsonText.value = JSON.stringify(source.value, null, 2);
-    toast.ok(`已存成 R${result.revision}。`);
+    toast.ok(`已存成第 ${result.revision} 版。`);
     emit("saved", result.revision);
   } catch (err) {
     toast.err((err as { data?: { message?: string } })?.data?.message ?? "保存失败，检查一下结构。");
@@ -135,14 +135,14 @@ onMounted(async () => {
 <template>
   <AppDialog
     :title="props.name"
-    :kicker="`${kindTitle} · 当前 R${revision}`"
+    :kicker="`${kindTitle} · 当前第 ${revision} 版`"
     width="1080px"
     @close="emit('close')"
   >
     <div v-if="loading" class="muted">加载中…</div>
     <template v-else>
       <PageTabs v-if="hasVisual" :model-value="tab" :items="tabs" @update:model-value="setTab" />
-      <p v-else class="notice">这个类型没有结构化表单，只能改 JSON。</p>
+      <p v-else class="notice">这个类型没有可视化表单，只能直接编辑内容本身。</p>
 
       <template v-if="showVisual && profile">
         <section class="group">
@@ -215,7 +215,7 @@ onMounted(async () => {
 
             <div class="nodes">
               <article v-for="(node, ni) in line.children" :key="ni" class="node">
-                <div class="row"><span class="label">组件 ID</span><input v-model="node.id" spellcheck="false" placeholder="组件 GUID"></div>
+                <div class="row"><span class="label">组件编号</span><input v-model="node.id" spellcheck="false" placeholder="照抄设备上的组件标识"></div>
                 <div class="row"><span class="label">备注名称</span><input v-model="node.name" maxlength="60" placeholder="可选"></div>
                 <div class="row"><SwitchToggle v-model="node.hideOnRule" label="按规则隐藏" /></div>
                 <div class="row"><span class="label">正文字号</span><input v-model.number="node.fontSize" type="number" min="6" max="96"></div>
@@ -278,7 +278,7 @@ onMounted(async () => {
           </article>
           <button type="button" class="add" @click="lines.push(newComponentLine())">添加行</button>
         </div>
-        <p class="hint">组件 ID 要用设备上注册的 GUID，写错会显示成空白组件。</p>
+        <p class="hint">组件编号要照抄设备上注册的组件标识，写错会显示成空白组件。</p>
       </template>
 
       <textarea v-else v-model="jsonText" class="json" spellcheck="false" />

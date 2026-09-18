@@ -113,13 +113,28 @@ describe("WebSocket 与 HTTP 共用同一签名信封", () => {
 });
 
 describe("时间偏移策略节", () => {
-  it("只接受 offsetSeconds 与 auto", () => {
+  it("只接受 offsetSeconds、auto 与 daily", () => {
     expect(timeSectionSchema.safeParse({ offsetSeconds: 12.5 }).success).toBe(true);
     expect(timeSectionSchema.safeParse({ auto: true }).success).toBe(true);
     expect(timeSectionSchema.safeParse({}).success).toBe(true);
     expect(timeSectionSchema.safeParse({ offsetSeconds: 86401 }).success).toBe(false);
     expect(timeSectionSchema.safeParse({ auto: "yes" }).success).toBe(false);
     expect(timeSectionSchema.safeParse({ offset: 1 }).success).toBe(false);
+  });
+
+  it("daily 每日自动偏移的取值边界", () => {
+    expect(timeSectionSchema.safeParse({ daily: { enabled: true, secondsPerDay: 5 } }).success).toBe(true);
+    expect(timeSectionSchema.safeParse({ offsetSeconds: 10, daily: { enabled: true, secondsPerDay: -5 } }).success).toBe(true);
+    expect(timeSectionSchema.safeParse({ daily: { enabled: true, secondsPerDay: 5, anchorDate: "2026-09-01" } }).success).toBe(true);
+    expect(timeSectionSchema.safeParse({ daily: { enabled: true, secondsPerDay: 5, anchorDate: "2026-9-1" } }).success).toBe(false);
+    expect(timeSectionSchema.safeParse({ daily: { enabled: true, secondsPerDay: 86401 } }).success).toBe(false);
+    expect(timeSectionSchema.safeParse({ daily: { enabled: true, secondsPerDay: 5, bogus: 1 } }).success).toBe(false);
+    expect(timeSectionSchema.safeParse({ daily: { secondsPerDay: 5 } }).success).toBe(false);
+  });
+
+  it("auto 与 daily.enabled 互斥，daily.enabled=false 可共存", () => {
+    expect(timeSectionSchema.safeParse({ auto: true, daily: { enabled: true, secondsPerDay: 5 } }).success).toBe(false);
+    expect(timeSectionSchema.safeParse({ auto: true, daily: { enabled: false, secondsPerDay: 5 } }).success).toBe(true);
   });
 
   it("策略发布接受 time 节并拒绝非法取值", () => {

@@ -212,10 +212,23 @@ public sealed class HostOperationService(
                          && offsetValue.TryGetDouble(out var parsed)
             ? parsed
             : null;
-        if (!auto && offset is null)
+        bool dailyEnabled = false;
+        double? secondsPerDay = null;
+        string? anchorDate = null;
+        if (command.Payload.TryGetProperty("daily", out var daily) && daily.ValueKind == JsonValueKind.Object)
+        {
+            dailyEnabled = daily.TryGetProperty("enabled", out var enabled) && enabled.ValueKind == JsonValueKind.True;
+            if (daily.TryGetProperty("secondsPerDay", out var perDay) && perDay.ValueKind == JsonValueKind.Number &&
+                perDay.TryGetDouble(out var perDaySeconds))
+                secondsPerDay = perDaySeconds;
+            anchorDate = daily.TryGetProperty("anchorDate", out var anchor) && anchor.ValueKind == JsonValueKind.String
+                ? anchor.GetString()
+                : null;
+        }
+        if (!auto && offset is null && !(dailyEnabled && secondsPerDay is not null))
             return new(command.CommandId, "conflict", new { error = "missing-offset-seconds" });
-        timeOffset.ApplyValues(auto, offset);
-        return new(command.CommandId, "succeeded", new { auto, offsetSeconds = offset });
+        timeOffset.ApplyValues(auto, offset, dailyEnabled, secondsPerDay, anchorDate);
+        return new(command.CommandId, "succeeded", new { auto, offsetSeconds = offset, daily = dailyEnabled ? new { enabled = true, secondsPerDay, anchorDate } : null });
     }
 
     private async Task<CommandResult> SyncExactTime(RemoteCommand command)

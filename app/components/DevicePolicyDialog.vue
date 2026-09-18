@@ -59,25 +59,25 @@ onMounted(async () => {
     <p v-if="loading" class="muted">加载中…</p>
     <template v-else-if="data">
       <dl class="summary">
-        <div><dt>生效修订</dt><dd>R{{ data.resolved.revision }}</dd></div>
-        <div><dt>已应用修订</dt><dd>{{ data.applied.revision ? `R${data.applied.revision}` : "无" }}</dd></div>
+        <div><dt>生效修订</dt><dd>第 {{ data.resolved.revision }} 版</dd></div>
+        <div><dt>已应用修订</dt><dd>{{ data.applied.revision ? `第 ${data.applied.revision} 版` : "无" }}</dd></div>
         <div><dt>同步状态</dt><dd :data-ok="data.inSync">{{ statusText }}</dd></div>
         <div><dt>最后上报</dt><dd>{{ seenText }}</dd></div>
         <div><dt>偏差次数</dt><dd>{{ data.applied.driftCount }}</dd></div>
       </dl>
-      <p class="muted">设备 ID {{ shortId }}。同名设备按 ID 区分。</p>
+      <p class="muted">设备编号 {{ shortId }}。同名设备按编号区分。</p>
       <article class="block">
         <h3>命中的策略 <small>{{ data.layers.length }}</small></h3>
         <ul>
           <li v-for="layer in data.layers" :key="layer.revisionId">
-            <span class="rev">R{{ layer.revision }}</span>
+            <span class="rev">第 {{ layer.revision }} 版</span>
             <span class="name">{{ layer.name }}<em v-if="layer.mode === 'append'">追加覆盖</em></span>
             <small>{{ scopeName(layer) }} · {{ layer.sections.length }} 节 · 锁定 {{ layer.lockedPointers }}</small>
           </li>
           <li v-if="!data.layers.length" class="muted">这台设备没有命中任何策略。</li>
         </ul>
       </article>
-      <p class="muted">合并后的配置段：{{ data.resolved.sections.join("、") || "无" }}</p>
+      <p class="muted">合并后的配置内容：{{ data.resolved.sections.map((section) => labelOf(POLICY_SECTION_LABELS, section)).join("、") || "无" }}</p>
     </template>
     <p v-else class="muted">读不到这台设备的策略。</p>
   </AppDialog>

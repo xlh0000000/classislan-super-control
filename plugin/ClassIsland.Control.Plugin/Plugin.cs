@@ -42,6 +42,12 @@ public sealed class Plugin : PluginBase
         services.AddSingleton<RollCallService>();
         services.AddHostedService(provider => provider.GetRequiredService<RollCallService>());
         services.AddSingleton<SettingsPolicyService>();
+        // 设置页逐页管控：包装页按 `classisland-control.ro.<页 Id>` 键注册瞬实例，
+        // 策略命中只读时注册表条目被替换为该键的克隆，宿主 GetKeyedService 即构造包装页。
+        services.AddSingleton<SettingsPagePolicyService>();
+        foreach (var (pageId, _) in SettingsPagePolicyService.ManagedPages)
+            services.AddKeyedTransient<ClassIsland.Core.Abstractions.Controls.SettingsPageBase, ReadOnlySettingsPageWrapper>(
+                SettingsPagePolicyService.WrapperId(pageId));
         // 宿主设置（时间偏移）的反射桥与执行者；宿主不提供时自动降级为不可用。
         services.AddSingleton<HostSettingsBridge>();
         services.AddSingleton<TimeOffsetService>();

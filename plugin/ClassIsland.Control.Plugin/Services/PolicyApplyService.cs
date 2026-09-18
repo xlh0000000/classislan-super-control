@@ -68,7 +68,16 @@ public sealed class PolicyApplyService(
                 if (document.TryGetProperty("automation", out var automationJson) && services.GetService<IAutomationService>() is { } automationService)
                 {
                     current = "automation";
-                    var workflows = automationJson.Deserialize<List<Workflow>>(JsonOptions) ?? throw new InvalidOperationException("Invalid automation policy.");
+                    // 自动化节点兼容两种形态：裸数组（宿主文件原样）与配置库文档 { "workflows": [...] }。
+                    List<Workflow>? workflows = automationJson.ValueKind switch
+                    {
+                        JsonValueKind.Array => automationJson.Deserialize<List<Workflow>>(JsonOptions),
+                        JsonValueKind.Object when automationJson.TryGetProperty("workflows", out var nested) && nested.ValueKind == JsonValueKind.Array
+                            => nested.Deserialize<List<Workflow>>(JsonOptions),
+                        JsonValueKind.Object => [],
+                        _ => null,
+                    };
+                    if (workflows is null) throw new InvalidOperationException("Invalid automation policy.");
                     automationService.Workflows.Clear();
                     foreach (var workflow in workflows) automationService.Workflows.Add(workflow);
                     automationService.SaveConfig("ClassIsland Control policy");

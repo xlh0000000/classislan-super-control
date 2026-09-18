@@ -22,6 +22,7 @@ const navGroups: [string, [string, string][]][] = [
     ["/overview", "总览"],
     ["/policies", "策略"],
     ["/tasks", "任务"],
+    ["/automation", "自动任务"],
     ["/rollcall", "点名"],
   ]],
   ["配置", configKindEntries.map((entry) => [entry.page, entry.nav] as [string, string])],

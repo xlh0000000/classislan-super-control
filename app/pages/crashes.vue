@@ -142,7 +142,7 @@ const peak = computed(() => Math.max(1, ...stats.value.series.map((point) => poi
         <li v-for="group in groups" :key="group.fingerprint" @click="openGroup(group)">
           <div class="row-main">
             <strong>{{ group.exceptionType }}</strong>
-            <small>{{ group.kind }} · 最近 {{ stamp(group.lastSeenAt) }}</small>
+            <small>{{ labelOf(CRASH_KIND_LABELS, group.kind) }} · 最近 {{ stamp(group.lastSeenAt) }}</small>
           </div>
           <div class="count"><b>{{ group.count }}</b><small>{{ group.deviceCount }} 台</small></div>
         </li>
@@ -177,7 +177,7 @@ const peak = computed(() => Math.max(1, ...stats.value.series.map((point) => poi
   <AppDialog v-if="active" kicker="崩溃分组" :title="active.exceptionType" width="900px" @close="active = null">
     <dl class="meta">
       <div><dt>特征码</dt><dd><code>{{ active.fingerprint }}</code></dd></div>
-      <div><dt>类型</dt><dd>{{ active.kind }}</dd></div>
+      <div><dt>类型</dt><dd>{{ labelOf(CRASH_KIND_LABELS, active.kind) }}</dd></div>
       <div><dt>次数</dt><dd>{{ active.count }} 条 · {{ active.deviceCount }} 台设备</dd></div>
       <div><dt>应用版本</dt><dd>{{ active.appVersions.join("、") || "—" }}</dd></div>
       <div><dt>首次出现</dt><dd>{{ stamp(active.firstSeenAt) }}</dd></div>

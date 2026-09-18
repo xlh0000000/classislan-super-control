@@ -6,13 +6,13 @@ using Microsoft.Extensions.DependencyInjection;
 namespace ClassIsland.Control.Plugin.Services;
 
 /// <summary>
-/// 设置锁定：把控制平面策略里的 settings 节映射到宿主自带的 ManagementPolicy。
+/// 设置锁定：把控制平面策略里的 settings 节映射到宿主自带的 ManagementPolicy，
+/// 并把 `page.&lt;页 Id&gt;` 三态键交给 SettingsPagePolicyService 做逐页管控。
 ///
-/// 宿主已在这些策略位上强制生效（设置窗口按类别隐藏并禁止导航、档案编辑器整块只读、
-/// 组件编辑模式被拒等），所以这里只负责写入，不需要另行拦截 UI。
+/// 宿主的 ManagementPolicy 只覆盖 9 个粗粒度开关；设置页逐项的隐藏/只读由注册表操作实现。
 /// 策略中不存在 settings 节时回落到“不锁定”，保证撤下策略即可恢复本机可编辑。
 /// </summary>
-public sealed class SettingsPolicyService(IServiceProvider services, AgentStatus status)
+public sealed class SettingsPolicyService(IServiceProvider services, SettingsPagePolicyService pagePolicy, AgentStatus status)
 {
     /// <summary>可被集控端锁定的设置项：策略键 → 显示名。</summary>
     public static readonly IReadOnlyList<(string Key, string Label, string Hint)> SettableLocks =
@@ -42,15 +42,22 @@ public sealed class SettingsPolicyService(IServiceProvider services, AgentStatus
     /// </summary>
     public IReadOnlyList<string> Apply(JsonElement? section)
     {
-        var management = Management;
-        if (management is null) return [];
-        var policy = management.Policy;
+        var objectSection = section is { ValueKind: JsonValueKind.Object } element ? element : (JsonElement?)null;
         var active = new List<string>();
+        // 逐页管控不依赖 ManagementService：注册表操作在只有旧版宿主策略接口时同样可行。
+        active.AddRange(pagePolicy.Apply(ReadPageControls(objectSection)));
+        var management = Management;
+        if (management is null)
+        {
+            status.SettingsPolicyApplied(active);
+            return active;
+        }
+        var policy = management.Policy;
         foreach (var (key, label, _) in SettableLocks)
         {
             var value = Baseline(key);
-            if (section is { ValueKind: JsonValueKind.Object } element &&
-                element.TryGetProperty(key, out var property) &&
+            if (objectSection is { } element2 &&
+                element2.TryGetProperty(key, out var property) &&
                 property.ValueKind is JsonValueKind.True or JsonValueKind.False)
                 value = property.GetBoolean();
             Assign(policy, key, value);
@@ -59,6 +66,26 @@ public sealed class SettingsPolicyService(IServiceProvider services, AgentStatus
         }
         status.SettingsPolicyApplied(active);
         return active;
+    }
+
+    /// <summary>从 settings 节解析 `page.&lt;页 Id&gt;` 三态键；无法识别的取值一律按不限制处理。</summary>
+    private static IReadOnlyDictionary<string, SettingsPageControl> ReadPageControls(JsonElement? section)
+    {
+        var controls = new Dictionary<string, SettingsPageControl>();
+        if (section is not { } element) return controls;
+        foreach (var property in element.EnumerateObject())
+        {
+            if (!property.Name.StartsWith("page.")) continue;
+            if (property.Value.ValueKind != JsonValueKind.String) continue;
+            var pageId = property.Name["page.".Length..];
+            controls[pageId] = property.Value.GetString() switch
+            {
+                "hidden" => SettingsPageControl.Hidden,
+                "readonly" => SettingsPageControl.ReadOnly,
+                _ => SettingsPageControl.None,
+            };
+        }
+        return controls;
     }
 
     private static void Assign(ManagementPolicy policy, string key, bool value)

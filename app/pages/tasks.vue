@@ -36,10 +36,19 @@ const capabilityDefs: CapabilityDef[] = [
   {
     id: "time.offset.persist.v1", label: "时间偏移",
     fields: [
-      { key: "mode", label: "方式", kind: "select", options: [["fixed", "固定偏移"], ["auto", "自动对齐集控端"]], initial: "fixed" },
+      { key: "mode", label: "方式", kind: "select", options: [["fixed", "固定偏移"], ["auto", "自动对齐集控端"], ["daily", "每日自动递增"]], initial: "fixed" },
       { key: "offsetSeconds", label: "偏移秒数", kind: "text", initial: "0", showWhen: (values) => values.mode === "fixed" },
+      { key: "secondsPerDay", label: "每日递增秒数（负数递减）", kind: "text", initial: "5", showWhen: (values) => values.mode === "daily" },
+      { key: "baseSeconds", label: "基线秒数（留空以设备当前偏移为基线）", kind: "text", initial: "", showWhen: (values) => values.mode === "daily" },
     ],
-    build: (values) => (values.mode === "auto" ? { auto: true } : { offsetSeconds: Number(values.offsetSeconds) || 0 }),
+    build: (values) => {
+      if (values.mode === "auto") return { auto: true };
+      if (values.mode === "daily") {
+        const base = values.baseSeconds === "" ? null : Number(values.baseSeconds) || 0;
+        return { ...(base !== null ? { offsetSeconds: base } : {}), daily: { enabled: true, secondsPerDay: Number(values.secondsPerDay) || 0 } };
+      }
+      return { offsetSeconds: Number(values.offsetSeconds) || 0 };
+    },
   },
   {
     id: "speech.queue.v1", label: "语音播报",
@@ -89,7 +98,7 @@ function buildTargets() {
 async function createTask() {
   let payload: Record<string, unknown>;
   try { payload = JSON.parse(form.payload) as Record<string, unknown>; }
-  catch { toast.err("命令内容不是有效的 JSON。"); return; }
+  catch { toast.err("命令内容格式有误，请检查后再试。"); return; }
   busy.value = true;
   try {
     await $fetch("/api/v1/admin/tasks", { method: "POST", headers: { origin: location.origin }, body: { ...form, ...buildTargets(), payload } });
@@ -130,10 +139,10 @@ onMounted(() => { if (useRoute().query.new) showEditor.value = true; });
       <label>名称<input v-model="form.name" required></label>
       <label>能力<select v-model="form.capabilityId"><option v-for="def in capabilityDefs" :key="def.id" :value="def.id">{{ def.risk ? `${def.label}（高风险）` : def.label }}</option></select></label>
       <label>有效时间（分钟）<input v-model.number="form.ttlMinutes" min="1" max="10080" type="number"></label>
-      <label>下发方式<select v-model="form.mode"><option value="all">全部</option><option value="fixed">固定批次</option><option value="percent">百分比灰度</option></select></label>
+      <label>下发方式<select v-model="form.mode"><option value="all">一次全发</option><option value="fixed">固定批次</option><option value="percent">按比例分批</option></select></label>
       <label v-if="form.mode === 'fixed'">每批设备数<input v-model.number="form.batchSize" min="1" max="500" type="number"></label>
-      <label v-if="form.mode === 'percent'">灰度百分比<input v-model.number="form.percent" min="1" max="100" type="number"></label>
-      <label>失败阈值 %<input v-model.number="form.failureThresholdPercent" min="0" max="100" type="number"></label>
+      <label v-if="form.mode === 'percent'">每批占比（%）<input v-model.number="form.percent" min="1" max="100" type="number"></label>
+      <label>失败率上限（%）<input v-model.number="form.failureThresholdPercent" min="0" max="100" type="number"></label>
       <label>最大并发（0 不限）<input v-model.number="form.maxConcurrency" min="0" max="1000" type="number"></label>
 
       <fieldset class="wide target">
@@ -155,7 +164,7 @@ onMounted(() => { if (useRoute().query.new) showEditor.value = true; });
           <label v-else>{{ field.label }}<input v-model="values[field.key]" :placeholder="field.placeholder"></label>
         </template>
         <details class="advanced">
-          <summary>高级：直接编辑 Payload JSON</summary>
+          <summary>高级：直接编辑命令内容</summary>
           <textarea v-model="form.payload" rows="6" />
         </details>
       </fieldset>
@@ -167,14 +176,14 @@ onMounted(() => { if (useRoute().query.new) showEditor.value = true; });
   </AppDialog>
 
   <section class="state-strip">
-    <div v-for="state in states" :key="state"><span>{{ state }}</span><strong>{{ countState(state) }}</strong></div>
+    <div v-for="state in states" :key="state"><span>{{ labelOf(TASK_STATE_LABELS, state) }}</span><strong>{{ countState(state) }}</strong></div>
   </section>
 
   <section v-if="tasks.length" class="list tasks">
     <article v-for="task in tasks" :key="task.id" :class="{ selected: task.id === selectedId }">
       <div class="row-main">
         <strong>{{ task.name }}</strong>
-        <small>{{ task.capabilityId }} · {{ task.state }} · {{ task.mode }}</small>
+        <small>{{ labelOf(CAPABILITY_LABELS, task.capabilityId) }} · {{ labelOf(TASK_STATE_LABELS, task.state) }} · {{ labelOf(MODE_LABELS, task.mode) }}</small>
         <small>{{ statOf(task) }}</small>
       </div>
       <div class="row-actions">
@@ -193,7 +202,7 @@ onMounted(() => { if (useRoute().query.new) showEditor.value = true; });
     <template v-else-if="detail">
       <p v-if="detail.task.lastError" class="warn">{{ detail.task.lastError }}</p>
       <dl class="meta">
-        <div><dt>状态</dt><dd>{{ detail.task.state }}</dd></div>
+        <div><dt>状态</dt><dd>{{ labelOf(TASK_STATE_LABELS, detail.task.state) }}</dd></div>
         <div><dt>目标设备</dt><dd>{{ detail.stats.total }}</dd></div>
         <div><dt>成功</dt><dd>{{ detail.stats.succeeded }}</dd></div>
         <div><dt>失败</dt><dd>{{ detail.stats.failed }}</dd></div>
@@ -204,7 +213,7 @@ onMounted(() => { if (useRoute().query.new) showEditor.value = true; });
       </dl>
       <h3>批次</h3>
       <div class="chips">
-        <span v-for="batch in detail.batches" :key="batch.id">第 {{ batch.batchIndex + 1 }} 批 · {{ batch.state }} · {{ batch.deviceCount }} 台</span>
+        <span v-for="batch in detail.batches" :key="batch.id">第 {{ batch.batchIndex + 1 }} 批 · {{ labelOf(BATCH_STATE_LABELS, batch.state) }} · {{ batch.deviceCount }} 台</span>
         <span v-if="!detail.batches.length">无批次记录</span>
       </div>
       <h3>目标执行（{{ detail.commands.total }}）</h3>
@@ -213,7 +222,7 @@ onMounted(() => { if (useRoute().query.new) showEditor.value = true; });
         <tbody>
           <tr v-for="command in detail.commands.items" :key="command.id">
             <td>{{ command.deviceName }}</td>
-            <td>{{ command.state }}</td>
+            <td>{{ labelOf(COMMAND_STATE_LABELS, command.state) }}</td>
             <td>{{ command.attemptCount }}/{{ command.maxAttempts }}</td>
             <td class="time">{{ command.acknowledgedAt || '—' }}</td>
             <td class="result">{{ command.lastError || (command.result ? JSON.stringify(command.result) : '—') }}</td>

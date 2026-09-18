@@ -24,7 +24,7 @@ async function loadMore() {
       <span class="seq">{{ String(event.sequence).padStart(5, '0') }}</span>
       <div class="row-main">
         <strong>{{ event.summary }}</strong>
-        <small>{{ event.action }} · {{ event.actorType }} / {{ event.actorId || 'system' }} · {{ event.targetType }}</small>
+        <small>{{ labelOf(ACTOR_TYPE_LABELS, event.actorType) }} · 对象：{{ labelOf(TARGET_TYPE_LABELS, event.targetType) }}</small>
       </div>
       <time>{{ event.createdAt }}</time>
       <code>{{ event.eventHash.slice(0, 12) }}</code>

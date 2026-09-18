@@ -219,12 +219,12 @@ async function confirmDelete() {
                 @click.stop="emit('toggle', room.deviceIds)"
               >
             </label>
-            <div class="room">
+            <div class="room" @click="emit('toggle', room.deviceIds)">
               <button
                 v-if="!isEditing('rooms', room.id)"
                 type="button"
                 class="room-open"
-                @click="emit('openRoom', room.id)"
+                @click.stop="emit('openRoom', room.id)"
               >
                 <span class="room-name">{{ room.name }}</span>
                 <small>{{ room.deviceIds.length ? `${onlineCount(room.deviceIds)}/${room.deviceIds.length}` : "空" }}</small>
@@ -235,6 +235,7 @@ async function confirmDelete() {
                 v-model="editName"
                 class="inline"
                 maxlength="60"
+                @click.stop
                 @keydown.enter="commitEdit"
                 @keydown.esc="cancelEdit"
                 @blur="commitEdit"
@@ -245,7 +246,7 @@ async function confirmDelete() {
                   :key="device.id"
                   type="button"
                   class="chip"
-                  :title="`${device.name} · ${device.id.slice(0, 8)} · 查看已应用策略`"
+                  :title="`${device.name} · ${device.id.slice(0, 8)} · 查看设备详情`"
                   @click.stop="emit('inspect', device.id)"
                 >
                   <i class="dot" :data-online="device.online" /><span class="chip-name">{{ device.name }}</span>
@@ -265,8 +266,8 @@ async function confirmDelete() {
                 >＋ 设备</button>
               </span>
               <span class="room-tools">
-                <button type="button" @click="startEdit('rooms', room)">改名</button>
-                <button type="button" @click="askDelete('rooms', room)">删除</button>
+                <button type="button" @click.stop="startEdit('rooms', room)">改名</button>
+                <button type="button" @click.stop="askDelete('rooms', room)">删除</button>
               </span>
             </div>
           </div>
@@ -357,9 +358,12 @@ async function confirmDelete() {
   padding: 14px 36px 14px 14px;
   border: 1px solid var(--line);
   background: transparent;
+  cursor: pointer;
+  user-select: none;
   transition: background var(--t-base) var(--ease-enter), border-color var(--t-base) var(--ease-enter);
 }
 .room:hover { border-color: var(--accent); background: var(--accent-wash); }
+.room .inline { cursor: text; user-select: text; }
 .room-open { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-height: 0; padding: 0; border: 0; background: none; color: inherit; text-align: left; }
 .room-open:hover { border: 0; background: none; }
 .room-open:hover .room-name { color: var(--accent); }

@@ -184,6 +184,8 @@ public sealed class PollingHostedService(
                 }
                 // 自动时间偏移：以集控端时间为基准闭环校正宿主时钟；未启用时是空操作。
                 timeOffset.ObserveServerTime(response.ServerTimeUtc, HostClock(), poll.RoundTrip);
+                // 每日自动偏移：按“今天”重算生效值，跨过零点即自动加一档；未启用时是空操作。
+                timeOffset.TickDaily();
                 // 点名名单：服务端只在设备手上的修订过期时回带，落盘后供悬浮窗离线使用。
                 if (response.RollCall is { } roster)
                     await rollCall.ApplyAsync(roster.Revision, roster.Names, stoppingToken);

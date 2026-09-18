@@ -10,6 +10,7 @@ import { resolveRollCallForDevice } from "./rollcall";
 import { signResponseBody } from "./server-signing";
 import { timetableDigestMatches, upsertDeviceTimetable } from "./device-timetable";
 import { recordCrashReports } from "./crash-reports";
+import { evaluateCrashTriggers } from "./auto-triggers";
 
 export type DevicePollInput = z.infer<typeof pollSchema>;
 
@@ -187,6 +188,8 @@ export function processDevicePoll(
             kinds: [...new Set(input.crashes.map((report) => report.kind))],
           },
         });
+      // 崩溃阈值触发器：新崩溃入库后当场评估，派生动作与本次 poll 同事务落库。
+      if (ingested.accepted > 0) evaluateCrashTriggers(db, deviceId, seenAt);
     }
     const responseBody = JSON.stringify({
       serverTimeUtc: seenAt,

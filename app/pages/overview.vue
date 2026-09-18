@@ -18,7 +18,7 @@ const tiles = computed(() => [
 
 <template>
   <PageHeading kicker="一眼看全局" title="运行总览">
-    <span class="revision"><span>策略版本</span><strong>R{{ data.policyRevision }}</strong></span>
+    <span class="revision"><span>策略版本</span><strong>第 {{ data.policyRevision }} 版</strong></span>
   </PageHeading>
 
   <section class="metrics" aria-label="关键指标">
@@ -63,13 +63,13 @@ const tiles = computed(() => [
     <div class="activity-grid">
       <ul class="list">
         <li v-for="entry in data.recent.audit" :key="entry.sequence">
-          <div class="row-main"><strong>{{ entry.summary }}</strong><small>{{ entry.action }} · {{ entry.createdAt }}</small></div>
+          <div class="row-main"><strong>{{ entry.summary }}</strong><small>{{ entry.createdAt }}</small></div>
         </li>
         <li v-if="!data.recent.audit.length"><div class="row-main"><small>还没有操作记录</small></div></li>
       </ul>
       <ul class="list">
         <li v-for="task in data.recent.tasks" :key="task.id">
-          <div class="row-main"><strong>{{ task.name }}</strong><small>{{ task.state }} · {{ task.capabilityId }}</small></div>
+          <div class="row-main"><strong>{{ task.name }}</strong><small>{{ labelOf(TASK_STATE_LABELS, task.state) }} · {{ labelOf(CAPABILITY_LABELS, task.capabilityId) }}</small></div>
         </li>
         <li v-if="!data.recent.tasks.length"><div class="row-main"><small>还没有任务</small></div></li>
       </ul>
