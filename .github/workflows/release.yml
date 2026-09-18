@@ -9,9 +9,36 @@ permissions:
   contents: read
 
 jobs:
+  verify:
+    name: 发布前校验
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      TZ: Asia/Shanghai
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: 安装依赖
+        run: npm ci --no-audit --no-fund
+      - name: 类型检查
+        run: npm run typecheck
+      - name: 单元测试
+        run: npm test
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      - name: C# 到 TS 协议向量
+        run: dotnet run --project tools/ProtocolVectors/ProtocolVectors.csproj -c Release -- --check
+      - name: JCS 规范向量
+        run: dotnet run --project tools/JcsVectors/JcsVectors.csproj -c Release
+
   plugin:
     name: 构建插件包
     runs-on: windows-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6
@@ -30,6 +57,7 @@ jobs:
   web:
     name: 构建服务端
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       TZ: Asia/Shanghai
     steps:
@@ -55,16 +83,20 @@ jobs:
       - name: 生产构建
         run: npm run build
       - name: 打包服务端
-        run: tar -czf classisland-control-${{ github.ref_name }}.tar.gz -C .output .
+        run: |
+          tar -czf classisland-control-${{ github.ref_name }}.tar.gz -C .output .
+          sha256sum classisland-control-${{ github.ref_name }}.tar.gz > classisland-control-${{ github.ref_name }}.tar.gz.sha256
       - uses: actions/upload-artifact@v7
         with:
           name: server-tarball
-          path: classisland-control-*.tar.gz
+          path: classisland-control-*
           if-no-files-found: error
 
   docker:
     name: 推送镜像
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [verify]
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: read
@@ -88,6 +120,7 @@ jobs:
             type=ref,event=tag
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
       - uses: docker/build-push-action@v7
         with:
           context: .
@@ -99,9 +132,10 @@ jobs:
 
   release:
     name: 建立 Release
-    needs: [plugin, web]
+    needs: [plugin, web, verify]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
@@ -112,11 +146,15 @@ jobs:
       - name: 校对插件版本
         run: |
           manifest=$(sed -n 's/^version:[[:space:]]*//p' plugin/ClassIsland.Control.Plugin/manifest.yml | tr -d '\r' | head -n1)
+          pkg=$(node -p "require('./package.json').version")
           tag="${GITHUB_REF_NAME#v}"
           norm() { local IFS=.; read -r a b c d <<< "$1"; echo "${a:-0}.${b:-0}.${c:-0}.${d:-0}"; }
-          echo "插件清单版本 $manifest / 标签 $GITHUB_REF_NAME"
+          echo "插件清单版本 $manifest / 服务端版本 $pkg / 标签 $GITHUB_REF_NAME"
           if [ "$(norm "$manifest")" != "$(norm "$tag")" ]; then
             echo "::warning::标签 $GITHUB_REF_NAME 与 plugin/ClassIsland.Control.Plugin/manifest.yml 的 $manifest 不一致"
+          fi
+          if [ "$(norm "$pkg")" != "$(norm "$tag")" ]; then
+            echo "::warning::标签 $GITHUB_REF_NAME 与 package.json 的 $pkg 不一致"
           fi
       - name: 整理产物
         run: |
@@ -124,6 +162,7 @@ jobs:
           find artifacts -name '*.cipx' -exec cp {} upload/ \;
           find artifacts -name 'checksums.md' -exec cp {} upload/ \;
           find artifacts -name '*.tar.gz' -exec cp {} upload/ \;
+          find artifacts -name '*.tar.gz.sha256' -exec cp {} upload/ \;
           ls -l upload
           test -n "$(ls -A upload)"
       - name: 建立或更新 Release
