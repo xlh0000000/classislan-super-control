@@ -215,7 +215,6 @@ const peak = computed(() => Math.max(1, ...stats.value.series.map((point) => poi
     @confirm="runClear"
   />
 </template><style scoped>
-.toolbar { display: flex; align-items: center; gap: 18px; margin-bottom: 16px; }
 .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; }
 .panels { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 14px; margin-top: 14px; }
 aside { display: grid; gap: 14px; align-content: start; }

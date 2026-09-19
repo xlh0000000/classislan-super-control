@@ -40,7 +40,7 @@ async function copyToken() {
       <span>02</span><strong>批量预配置包</strong><p>生成配置文件，和插件一起安装。</p>
     </button>
   </section>
-  <section class="creator">
+  <section class="creator controls">
     <label>有效时间（分钟）<input v-model="expires" min="5" max="1440" type="number"></label>
     <label v-if="mode === 'bundle'">允许接入设备数<input v-model="maxUses" min="2" max="1000" type="number"></label>
     <label>绑定组织<select v-model="orgNodeId"><option value="">不分组</option><option v-for="node in org.nodes" :key="node.id" :value="node.id">{{ node.name }}</option></select></label>
@@ -80,7 +80,7 @@ async function copyToken() {
 .enroll-grid strong { margin-top: 26px; font-size: 23px; font-weight: 600; letter-spacing: -0.5px; }
 .enroll-grid p { max-width: 380px; margin: 10px 0 0; color: var(--ink-soft); font-size: 12px; line-height: 1.7; }
 .enroll-grid button.selected p { color: var(--fill-muted); }
-.creator { display: flex; align-items: flex-end; gap: 18px; flex-wrap: wrap; margin-top: 14px; padding: 26px 28px; border: 1px solid var(--line-soft); background: var(--surface-1); }
+.creator { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; margin-top: 14px; padding: 26px 28px; border: 1px solid var(--line-soft); background: var(--surface-1); }
 .creator > label { display: grid; gap: 8px; color: var(--ink-muted); font-size: 11px; letter-spacing: 0.6px; }
 .creator input, .creator select { width: 170px; }
 .tags { display: flex; flex-wrap: wrap; gap: 14px; margin: 0; padding: 8px 0; border: 0; }

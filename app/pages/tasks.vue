@@ -250,7 +250,6 @@ legend { padding: 0 10px; color: var(--ink-muted); font-size: 10px; letter-spaci
 .risk { margin: 0 0 16px; color: var(--bad); font-size: 12px; }
 .static { margin: 0; color: var(--ink-faint); font-size: 11px; }
 .color-row { display: flex; gap: 10px; }
-.color-row input:first-child { width: 72px; padding: 4px; }
 .advanced { margin-top: 16px; }
 .advanced summary { cursor: pointer; color: var(--ink-soft); font-size: 12px; }
 .advanced textarea { margin-top: 12px; }

@@ -335,7 +335,7 @@ legend { padding: 0 10px; color: var(--ink-muted); font-size: 10px; letter-spaci
 .target-head strong { color: var(--ink); font-weight: 600; }
 .target-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
 .weekdays { display: flex; flex-wrap: wrap; gap: 8px; }
-.weekdays button { min-height: 32px; padding: 0 14px; border: 1px solid var(--line); color: var(--ink-muted); font-size: 12px; }
+.weekdays button { min-height: var(--control-h-sm); padding: 0 14px; border: 1px solid var(--line); color: var(--ink-muted); font-size: 12px; }
 .weekdays button.on { background: var(--fill); color: var(--fill-ink); border-color: var(--fill); }
 .toggle { display: flex; align-items: center; gap: 10px; cursor: pointer; }
 .toggle span { font-size: 12px; color: var(--ink-soft); }

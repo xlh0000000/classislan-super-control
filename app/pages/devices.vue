@@ -73,7 +73,7 @@ async function runBulkTransport(transport: "http" | "websocket") {
   </PageHeading>
   <section v-if="canManage" class="bulk">
     <div><span>批量下发</span><strong>{{ targetEmpty ? "未选择目标" : targetSummary }}</strong><small>{{ targetCount }} 台设备</small></div>
-    <div class="bulk-actions">
+    <div class="bulk-actions toolbar">
       <button type="button" class="solid pick" @click="showTargets = true">选择目标</button>
       <button type="button" :disabled="bulkBusy || targetEmpty" @click="bulk('enable')">批量启用</button>
       <button type="button" class="danger" :disabled="bulkBusy || targetEmpty" @click="bulk('disable')">批量停用</button>
@@ -121,7 +121,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 18px;
+  gap: 14px;
   margin-bottom: 4px;
   padding: 20px 24px;
   border: 1px solid var(--line-soft);
@@ -131,5 +131,5 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .bulk span { color: var(--ink-muted); font-size: 10px; letter-spacing: 1.2px; }
 .bulk strong { font-size: 15px; font-weight: 600; }
 .bulk small { color: var(--ink-faint); font-size: 10px; letter-spacing: 0.6px; }
-.bulk-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.bulk-actions { margin-bottom: 0; }
 </style>

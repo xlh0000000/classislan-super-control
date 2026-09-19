@@ -22,9 +22,9 @@ async function createBackup() {
   </PageHeading>
 
   <section class="facts">
-    <article class="fact rise"><span>数据库</span><strong>{{ data.database }}</strong><small>一个数据目录只能跑一个进程</small></article>
-    <article class="fact rise" style="--i: 1"><span>服务版本</span><strong>{{ data.version }}</strong><small>新旧版本能互通</small></article>
-    <article class="fact rise" style="--i: 2"><span>初始化</span><strong>{{ data.initialized ? "已完成" : "待首设" }}</strong><small>建好管理员后入口就关</small></article>
+    <article class="fact"><span>数据库</span><strong>{{ data.database }}</strong><small>一个数据目录只能跑一个进程</small></article>
+    <article class="fact"><span>服务版本</span><strong>{{ data.version }}</strong><small>新旧版本能互通</small></article>
+    <article class="fact"><span>初始化</span><strong>{{ data.initialized ? "已完成" : "待首设" }}</strong><small>建好管理员后入口就关</small></article>
   </section>
 
   <section class="panel backups">

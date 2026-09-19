@@ -299,7 +299,6 @@ onMounted(async () => {
 .label{color:var(--ink-soft);font-size:12px}
 .row input[type=text],.row input:not([type]),.row select{min-width:190px}
 .row input[type=number]{width:120px}
-.row input[type=color]{width:56px;min-height:var(--control-h-sm);padding:2px}
 .hint{margin:14px 0 0;color:var(--ink-muted);font-size:11px;line-height:1.7}
 .link{display:inline-flex;align-items:center;gap:8px;padding-bottom:5px;border-bottom:1px solid var(--line-strong);color:var(--ink-soft);font-size:12px;text-decoration:none;transition:color var(--t-mid) var(--ease-enter),border-color var(--t-mid) var(--ease-enter)}
 .link:hover{border-color:var(--accent);color:var(--accent)}

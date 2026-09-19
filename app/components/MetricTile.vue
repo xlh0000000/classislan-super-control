@@ -9,7 +9,7 @@ defineProps<{
 </script>
 
 <template>
-  <article class="metric rise" :data-tone="tone || 'normal'">
+  <article class="metric" :data-tone="tone || 'normal'">
     <div class="top"><span>{{ label }}</span><i class="dot" /></div>
     <strong><RollingNumber :value="value" /></strong>
     <small v-if="note">{{ note }}</small>

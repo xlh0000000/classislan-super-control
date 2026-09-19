@@ -24,9 +24,8 @@ const tiles = computed(() => [
 
   <section class="metrics" aria-label="关键指标">
     <MetricTile
-      v-for="(tile, index) in tiles"
+      v-for="tile in tiles"
       :key="tile.label"
-      :style="{ '--i': index }"
       :label="tile.label"
       :value="tile.value"
       :tone="tile.tone"

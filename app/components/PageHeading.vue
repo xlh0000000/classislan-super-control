@@ -5,7 +5,7 @@ defineProps<{ kicker?: string; title: string }>();
 </script>
 
 <template>
-  <header class="page-heading rise">
+  <header class="page-heading">
     <div class="head-top">
       <span class="kicker">{{ kicker }}</span>
       <div class="actions"><slot /></div>
@@ -23,7 +23,7 @@ defineProps<{ kicker?: string; title: string }>();
 .rule { display: block; height: 2px; margin-top: 26px; background: var(--ink); }
 
 /* 标题栏动作默认是文字按钮，主操作加 .solid。 */
-.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .actions :deep(a),
 .actions :deep(button) {
   min-height: var(--control-h-sm);
@@ -43,12 +43,12 @@ defineProps<{ kicker?: string; title: string }>();
 .actions :deep(a:hover),
 .actions :deep(button:hover:not(:disabled)) { background: transparent; color: var(--accent); }
 .actions :deep(.solid) {
-  min-height: var(--control-h);
-  padding: 0 18px;
+  min-height: var(--control-h-sm);
+  padding: 0 16px;
   background: var(--fill);
   color: var(--fill-ink);
-  font-size: 11px;
-  letter-spacing: 1px;
+  font-size: 12px;
+  letter-spacing: 0.5px;
 }
 .actions :deep(.solid:hover) { background: var(--fill-hover); color: var(--fill-ink); }
 .actions :deep(button:disabled) { opacity: 0.45; cursor: not-allowed; }

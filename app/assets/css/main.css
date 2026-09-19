@@ -194,6 +194,21 @@ button.danger:hover:not(:disabled) { border-color: var(--bad); background: color
 .panel-head a { color: var(--ink-soft); font-size: 12px; text-decoration: none; transition: color var(--t-mid) var(--ease-enter); }
 .panel-head a:hover { color: var(--accent); }
 
+/* 控制条：横排操作的一把尺子。行内一律用紧凑刻度 34px，主操作只靠填充色区分，
+   不再单独加高——一行里混着 46px 和 34px 正是“看着不整齐”的来源。
+   带题注的字段（label 包着 input/select）按控件下沿对齐，纯按钮也落在同一条线上。
+   .toolbar 负责这一行的排布；已有自己的排布（两端对齐的页脚等）只挂 .controls 取刻度。 */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: flex-start;
+  gap: 12px 14px;
+  margin: 0 0 22px;
+}
+.toolbar > label { display: grid; gap: 8px; color: var(--ink-muted); font-size: 11px; letter-spacing: 0.6px; }
+.toolbar > :is(.micro, .muted, .static) { display: inline-flex; align-items: center; min-height: var(--control-h-sm); }
+
 /* 列表：76px 行高 + 底部发丝线 + 250ms 背景过渡（RhineLab .result-row）。 */
 .list { border-top: 1px solid var(--line-strong); }
 .list > * {
@@ -332,18 +347,28 @@ input[type="checkbox"], input[type="radio"] {
   accent-color: var(--accent);
   cursor: pointer;
 }
+/* 取色块跟描边控件同高同描边，放在一行里才不会一高一矮。 */
+input[type="color"] {
+  width: 46px;
+  min-height: var(--control-h-sm);
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--surface-1);
+}
+/* 紧凑刻度接在表单默认值之后覆盖：主操作只靠填充色区分，不再单独加高。 */
+:is(.toolbar, .controls) :is(button, select, input:not([type="checkbox"]):not([type="radio"]):not([type="color"]), .seg, .badge) { min-height: var(--control-h-sm); }
+:is(.toolbar, .controls) :is(select, input:not([type="checkbox"]):not([type="radio"]):not([type="color"])) { font-size: 12px; }
+:is(.toolbar, .controls) :is(.solid, button.solid) { padding: 0 16px; font-size: 12px; letter-spacing: 0.5px; }
+:is(.toolbar, .controls) .badge { display: inline-flex; align-items: center; }
 .field { display: grid; gap: 8px; }
 .field > span { color: var(--ink-muted); font-size: 11px; letter-spacing: 0.6px; }
 
-/* 页面切换：300ms 进 / 200ms 出，位移 12px / 8px。 */
+/* 页面切换：整页唯一一次入场，300ms 进 / 200ms 出，位移 12px / 8px。 */
 .page-enter-active { transition: opacity var(--t-enter) var(--ease-enter), transform var(--t-enter) var(--ease-enter); }
 .page-leave-active { transition: opacity var(--t-mid) var(--ease-exit), transform var(--t-mid) var(--ease-exit); }
 .page-enter-from { opacity: 0; transform: translateY(12px); }
 .page-leave-to { opacity: 0; transform: translateY(8px); }
-
-/* 入场原语：卡片 / 列表逐项升起，配合 --i 做瀑布。 */
-@keyframes rise-in { from { opacity: 0; transform: translateY(12px); } }
-.rise { animation: rise-in var(--t-enter) var(--ease-enter) backwards; animation-delay: calc(var(--i, 0) * 45ms); }
 
 /* 内容淡入：RhineLab 标签页正文 150ms 从 0.35。 */
 @keyframes fade-in { from { opacity: 0.35; } }
