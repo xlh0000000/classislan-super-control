@@ -1,13 +1,11 @@
-const rolePermissions: Record<string, Set<string>> = {
-  owner: new Set(["*"]),
-  admin: new Set(["dashboard.read", "devices.read", "enrollment.write", "devices.write", "organization.read", "organization.write", "policies.read", "policies.write", "configurations.read", "configurations.write", "tasks.read", "tasks.write", "audit.read", "system.read", "system.write", "users.read", "users.write", "rollcall.read", "rollcall.write", "crashes.read", "crashes.write"]),
-  operator: new Set(["dashboard.read", "devices.read", "devices.write", "tasks.read", "tasks.write", "audit.read", "rollcall.read", "crashes.read"]),
-  auditor: new Set(["audit.read", "crashes.read"]),
-  viewer: new Set(["dashboard.read", "devices.read", "organization.read", "policies.read", "configurations.read", "tasks.read", "system.read", "rollcall.read", "crashes.read"]),
-};
+import { roleCan } from "../../shared/permissions";
 
 export function requirePermission(user: { role: string }, permission: string) {
-  const permissions = rolePermissions[user.role] ?? new Set<string>();
-  if (!permissions.has("*") && !permissions.has(permission))
+  if (!roleCan(user.role, permission))
     throw createError({ statusCode: 403, message: "当前角色没有执行此操作的权限。" });
+}
+
+/** 只判断不抛错：聚合页里每项数据各有各的门槛，够不到就少给一块，而不是整页 403。 */
+export function canPermission(user: { role: string }, permission: string) {
+  return roleCan(user.role, permission);
 }

@@ -13,6 +13,7 @@ import {
   deviceScopeFilter,
   effectiveScopeOrgNodeId,
   hasSchoolWideScope,
+  teacherBoundDeviceIds,
   visibleOrgNodeIds,
   type ScopeUser,
 } from "../server/utils/scope";
@@ -38,6 +39,11 @@ function seedDevice(db: Database.Database, id: string, orgNodeId: string | null)
 function seedUser(db: Database.Database, id: string, role: string, scopeOrgNodeId: string | null) {
   db.prepare(`INSERT INTO users (id,username,password_hash,display_name,role,scope_org_node_id,created_at)
     VALUES (?,?,?,?,?,?,?)`).run(id, `user-${id}`, "hash", `用户-${id}`, role, scopeOrgNodeId, NOW);
+}
+
+function bindDevice(db: Database.Database, deviceId: string, userId: string, boundBy = "admin") {
+  db.prepare("INSERT INTO device_teachers (device_id,user_id,bound_by,created_at) VALUES (?,?,?,?)")
+    .run(deviceId, userId, boundBy, NOW);
 }
 
 function seedTree(db: Database.Database) {
@@ -146,5 +152,54 @@ describe("organization scope", () => {
     seedUser(db, "u1", "admin", "a");
     const row = db.prepare("SELECT scope_org_node_id scopeOrgNodeId FROM users WHERE id=?").get("u1") as { scopeOrgNodeId: string | null };
     expect(row.scopeOrgNodeId).toBe("a");
+  });
+});
+
+describe("teacher device binding scope", () => {
+  it("shows a teacher only the devices bound to them, whatever node they sit in", () => {
+    const db = createDb();
+    seedTree(db);
+    seedUser(db, "t1", "teacher", null);
+    seedUser(db, "t2", "teacher", "a");
+    bindDevice(db, "dA", "t1");
+    bindDevice(db, "dNull", "t1");
+    bindDevice(db, "dC", "t2");
+
+    const teacher: ScopeUser = { id: "t1", role: "teacher", scopeOrgNodeId: null };
+    expect(visibleDeviceIds(db, teacher)).toEqual(["dA", "dNull"]);
+    expect(teacherBoundDeviceIds(db, teacher)).toEqual(["dA", "dNull"]);
+    expect(visibleDeviceIds(db, { id: "t2", role: "teacher" })).toEqual(["dC"]);
+  });
+
+  it("never reads a teacher with a null scope as school-wide", () => {
+    const db = createDb();
+    seedTree(db);
+    seedUser(db, "t1", "teacher", null);
+    const teacher: ScopeUser = { id: "t1", role: "teacher", scopeOrgNodeId: null };
+    expect(hasSchoolWideScope(teacher)).toBe(false);
+    expectHttpStatus(() => assertSchoolWideScope(teacher, "点名名单"), 403);
+    expect(visibleOrgNodeIds(db, teacher)).toEqual([]);
+    expect(teacherBoundDeviceIds(db, { id: "u", role: "admin" })).toEqual([]);
+  });
+
+  it("passes device checks only for bound devices", () => {
+    const db = createDb();
+    seedTree(db);
+    seedUser(db, "t1", "teacher", null);
+    bindDevice(db, "dB", "t1");
+    const teacher: ScopeUser = { id: "t1", role: "teacher" };
+    expect(() => assertDeviceInScope(db, teacher, "dB")).not.toThrow();
+    expectHttpStatus(() => assertDeviceInScope(db, teacher, "dA"), 404);
+    expectHttpStatus(() => assertDeviceInScope(db, teacher, "missing"), 404);
+  });
+
+  it("rejects organization targets for a teacher", () => {
+    const db = createDb();
+    seedTree(db);
+    seedUser(db, "t1", "teacher", null);
+    bindDevice(db, "dA", "t1");
+    const teacher: ScopeUser = { id: "t1", role: "teacher" };
+    expectHttpStatus(() => assertOrgNodeInScope(db, teacher, "a"), 404);
+    expectHttpStatus(() => assertOrgNodeInScope(db, teacher, null), 404);
   });
 });

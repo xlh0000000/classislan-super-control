@@ -1,10 +1,15 @@
 <script setup lang="ts">
 type DeviceLite = { id: string; name: string; online: boolean; disabled: boolean; orgName: string };
 
-const props = defineProps<{ roomId: string; roomName: string; deviceIds: string[]; devices: DeviceLite[] }>();
+const props = withDefaults(defineProps<{
+  roomId: string; roomName: string; deviceIds: string[]; devices: DeviceLite[]; selectable?: boolean;
+}>(), { selectable: true });
 const emit = defineEmits<{ close: []; changed: []; inspect: [id: string] }>();
 const toast = useToast();
 const { selection, toggleDevice } = useTargetSelection();
+const { can } = useSession();
+/** 教室与设备的归属关系由 devices.write 管，只读账号进来是看设备，不是调座位。 */
+const canEdit = computed(() => can("devices.write"));
 const query = ref("");
 const busy = ref(false);
 
@@ -49,20 +54,20 @@ async function move(deviceIds: string[], add: boolean) {
       <h3>本教室设备 <small>{{ assigned.length }}</small></h3>
       <ul>
         <li v-for="device in assignedList" :key="device.id" :data-on="selection.deviceIds.includes(device.id)">
-          <label class="pick"><input type="checkbox" :checked="selection.deviceIds.includes(device.id)" @change="toggleDevice(device.id)"></label>
+          <label class="pick" :aria-hidden="!selectable"><input v-if="selectable" type="checkbox" :checked="selection.deviceIds.includes(device.id)" @change="toggleDevice(device.id)"></label>
           <i class="dot" :data-online="device.online" />
           <button type="button" class="name" @click="emit('inspect', device.id)">{{ device.name }}</button>
           <small>{{ device.orgName }} · {{ device.id.slice(0, 8) }}</small>
-          <button type="button" class="ghost" :disabled="busy" @click="move([device.id], false)">移出</button>
+          <button v-if="canEdit" type="button" class="ghost" :disabled="busy" @click="move([device.id], false)">移出</button>
         </li>
         <li v-if="!assignedList.length" class="muted">这间教室还没有设备。</li>
       </ul>
     </article>
-    <article class="block">
+    <article v-if="canEdit" class="block">
       <h3>可加入的设备 <small>{{ candidates.length }}</small></h3>
       <ul>
         <li v-for="device in candidates" :key="device.id" :data-on="selection.deviceIds.includes(device.id)">
-          <label class="pick"><input type="checkbox" :checked="selection.deviceIds.includes(device.id)" @change="toggleDevice(device.id)"></label>
+          <label class="pick" :aria-hidden="!selectable"><input v-if="selectable" type="checkbox" :checked="selection.deviceIds.includes(device.id)" @change="toggleDevice(device.id)"></label>
           <i class="dot" :data-online="device.online" />
           <button type="button" class="name" @click="emit('inspect', device.id)">{{ device.name }}</button>
           <small>{{ device.orgName }} · {{ device.id.slice(0, 8) }}</small>
@@ -71,7 +76,7 @@ async function move(deviceIds: string[], add: boolean) {
         <li v-if="!candidates.length" class="muted">没有可以加入的设备。</li>
       </ul>
     </article>
-    <p class="tip">点设备名看它生效中的策略，勾选加入多选。</p>
+    <p v-if="selectable && canEdit" class="tip">点设备名看它生效中的策略，勾选加入多选。</p>
     <template #footer>
       <button type="button" class="ghost" @click="emit('close')">关闭</button>
     </template>

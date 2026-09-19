@@ -5,15 +5,19 @@ type Room = { id: string; floorId: string; name: string; sortOrder: number; devi
 type DeviceLite = { id: string; name: string; online: boolean; disabled: boolean; orgName: string };
 type Kind = "buildings" | "floors" | "rooms";
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   buildings: Building[];
   floors: Floor[];
   rooms: Room[];
   devices: DeviceLite[];
   selectedIds: string[];
-}>();
+  selectable?: boolean;
+}>(), { selectable: true });
 const emit = defineEmits<{ toggle: [ids: string[]]; openRoom: [id: string]; inspect: [id: string]; changed: [] }>();
 const toast = useToast();
+const { can } = useSession();
+/** 楼栋结构增删改走的是 devices.write，没这条权限的账号点了只会拿到 403。 */
+const canEdit = computed(() => can("devices.write"));
 
 const activeId = ref<string | null>(null);
 watch(
@@ -146,9 +150,9 @@ async function confirmDelete() {
             v-else
             type="button"
             :data-active="building.id === active?.id"
-            :title="`${building.name} · 双击改名`"
+            :title="canEdit ? `${building.name} · 双击改名` : building.name"
             @click="activeId = building.id"
-            @dblclick="startEdit('buildings', building)"
+            @dblclick="canEdit && startEdit('buildings', building)"
           >{{ building.name }}</button>
         </template>
         <input
@@ -162,10 +166,10 @@ async function confirmDelete() {
           @keydown.esc="cancelCreate"
           @blur="commitCreate"
         >
-        <button v-else type="button" class="add" title="新建楼栋" @click="startCreate('buildings')">＋ 楼栋</button>
+        <button v-else-if="canEdit" type="button" class="add" title="新建楼栋" @click="startCreate('buildings')">＋ 楼栋</button>
       </div>
       <div class="board-tools">
-        <template v-if="active">
+        <template v-if="active && canEdit">
           <button type="button" class="ghost" @click="startEdit('buildings', active)">改名</button>
           <button type="button" class="ghost" @click="askDelete('buildings', active)">删除</button>
         </template>
@@ -174,13 +178,14 @@ async function confirmDelete() {
     </header>
 
     <EmptyState v-if="!buildings.length" title="还没有楼栋">
-      <template #action><button type="button" @click="startCreate('buildings')">新建楼栋</button></template>
+      <template #action><button v-if="canEdit" type="button" @click="startCreate('buildings')">新建楼栋</button></template>
     </EmptyState>
 
     <div v-else class="floors">
       <article v-for="floor in floors" :key="floor.id" class="floor">
         <div class="floor-label">
           <input
+            v-if="selectable"
             type="checkbox"
             :checked="allSelected(floorDeviceIds(floor.id))"
             :indeterminate="someSelected(floorDeviceIds(floor.id))"
@@ -198,7 +203,7 @@ async function confirmDelete() {
           >
           <strong v-else>{{ floor.name }}</strong>
           <small>{{ floorDeviceIds(floor.id).length }}</small>
-          <span class="floor-tools">
+          <span v-if="canEdit" class="floor-tools">
             <button type="button" @click="startEdit('floors', floor)">改名</button>
             <button type="button" @click="askDelete('floors', floor)">删除</button>
           </span>
@@ -211,7 +216,7 @@ async function confirmDelete() {
             :data-selected="allSelected(room.deviceIds)"
             :data-partial="someSelected(room.deviceIds)"
           >
-            <label class="pick">
+            <label v-if="selectable" class="pick">
               <input
                 type="checkbox"
                 :checked="allSelected(room.deviceIds)"
@@ -219,7 +224,7 @@ async function confirmDelete() {
                 @click.stop="emit('toggle', room.deviceIds)"
               >
             </label>
-            <div class="room" @click="emit('toggle', room.deviceIds)">
+            <div class="room" @click="selectable ? emit('toggle', room.deviceIds) : emit('openRoom', room.id)">
               <button
                 v-if="!isEditing('rooms', room.id)"
                 type="button"
@@ -259,13 +264,14 @@ async function confirmDelete() {
                   @click.stop="emit('openRoom', room.id)"
                 >+{{ roomDevices(room).length - 4 }}</button>
                 <button
+                  v-if="canEdit"
                   type="button"
                   class="chip add-chip"
                   title="给这间教室添加设备"
                   @click.stop="emit('openRoom', room.id)"
                 >＋ 设备</button>
               </span>
-              <span class="room-tools">
+              <span v-if="canEdit" class="room-tools">
                 <button type="button" @click.stop="startEdit('rooms', room)">改名</button>
                 <button type="button" @click.stop="askDelete('rooms', room)">删除</button>
               </span>
@@ -282,7 +288,7 @@ async function confirmDelete() {
             @keydown.esc="cancelCreate"
             @blur="commitCreate"
           >
-          <button v-else type="button" class="add" @click="startCreate('rooms', floor.id)">＋ 教室</button>
+          <button v-else-if="canEdit" type="button" class="add" @click="startCreate('rooms', floor.id)">＋ 教室</button>
         </div>
       </article>
       <input
@@ -296,8 +302,8 @@ async function confirmDelete() {
         @keydown.esc="cancelCreate"
         @blur="commitCreate"
       >
-      <button v-else type="button" class="add floor-add" @click="startCreate('floors', active?.id ?? null)">＋ 楼层</button>
-      <p v-if="!floors.length" class="floor-hint">该楼栋还没有楼层，点「＋ 楼层」添加。</p>
+      <button v-else-if="canEdit" type="button" class="add floor-add" @click="startCreate('floors', active?.id ?? null)">＋ 楼层</button>
+      <p v-if="!floors.length" class="floor-hint">{{ canEdit ? "该楼栋还没有楼层，点「＋ 楼层」添加。" : "该楼栋还没有楼层。" }}</p>
     </div>
 
     <ConfirmDialog

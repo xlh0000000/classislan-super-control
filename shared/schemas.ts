@@ -287,6 +287,8 @@ export const pollSchema = z.object({
   // 课表上传：每轮必报摘要（可选），内容变化时携带全量快照。
   timetableDigest: z.string().max(128).optional(),
   timetable: ciTimetableSchema.optional(),
+  // 索取一次性教师绑定码：设备准备在屏上出示时才申请，服务端只存哈希、明文随签名响应回本机。
+  bindingCodeRequested: z.boolean().default(false),
 });
 export const configurationKinds = ["profile", "components", "automation", "plugin", "settings"] as const;
 export type ConfigurationKind = (typeof configurationKinds)[number];

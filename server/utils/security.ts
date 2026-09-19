@@ -18,6 +18,24 @@ export function randomToken(bytes = 32) {
   return randomBytes(bytes).toString("base64url");
 }
 
+/** 去掉易混字符（0/O、1/I/l）的凭据字母表：这类口令与码常被口头念出或手抄。 */
+export const CREDENTIAL_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+
+/** 从字母表取 length 位随机字符；256 不是字母表长度的整数倍，故丢弃越界字节以免分布偏置。 */
+export function randomReadableString(alphabet: string, length: number) {
+  const alphabetSize = alphabet.length;
+  const usableCeiling = alphabetSize * Math.floor(256 / alphabetSize);
+  const chars: string[] = [];
+  while (chars.length < length) {
+    for (const byte of randomBytes(64)) {
+      if (byte >= usableCeiling) continue;
+      chars.push(alphabet.charAt(byte % alphabetSize));
+      if (chars.length === length) break;
+    }
+  }
+  return chars.join("");
+}
+
 /** 定长填充后的恒定时间字符串比较，避免令牌校验泄露长度与内容。 */
 export function timingSafeEqualText(left: string, right: string) {
   const leftBytes = Buffer.from(left, "utf8");

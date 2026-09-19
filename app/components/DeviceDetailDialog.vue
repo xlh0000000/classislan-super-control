@@ -7,12 +7,14 @@ type TimetableSnapshot = {
   timeLayouts?: Record<string, { name?: string; layouts?: { startTime?: string; endTime?: string }[] }>;
   subjects?: Record<string, { name?: string; color?: string }>;
 };
+type BoundTeacher = { userId: string; username: string; displayName: string; boundBy: "admin" | "qr"; createdAt: string };
 type DeviceDetail = {
   id: string; name: string; orgNodeId: string | null; pluginVersion: string; appVersion: string; platform: string; transport: string;
   capabilityDigest: string; policyRevision: number; driftCount: number; lastSequence: number;
   lastSeenAt: string | null; createdAt: string | null; disabledAt: string | null; online: boolean;
   policyStatus?: { desired: { revision: number; epoch: number; hash: string; sections: string[]; lockedPointers: number }; applied: { revision: number; epoch: number; hash: string; sections: unknown; driftCount: number }; inSync: boolean };
   capabilitySnapshot: unknown; tagIds: string[]; recentCommands: { id: string; capabilityId: string; state: string; attemptCount: number; createdAt: string }[];
+  teachers?: BoundTeacher[];
   timetable?: TimetableSnapshot | null;
   timetableStatus?: { digest: string; uploadedAt: string; subjectsCount: number; timeLayoutsCount: number; classPlansCount: number; classPlanGroupsCount: number } | null;
   crashStatus?: { total: number; last7d: number; lastAt: string | null } | null;
@@ -21,19 +23,25 @@ type DeviceDetail = {
 const props = defineProps<{ deviceId: string }>();
 const emit = defineEmits<{ close: []; changed: [] }>();
 const toast = useToast();
+const { user, can } = useSession();
 const selected = ref<DeviceDetail | null>(null);
 const loading = ref(true);
 const renameValue = ref("");
 const showPolicy = ref(false);
+/** 教师与组织范围账号看到的入口不同：写操作的按钮跟接口把关用同一份权限表。 */
+const canManage = computed(() => can("devices.write"));
+const canBind = computed(() => can("binding.write"));
+const canApply = computed(() => can("timetable.apply"));
 
 /** 内容按主题分栏展示，避免长弹窗全部堆在一起。 */
-const detailTabs = [
+const detailTabs = computed(() => [
   { key: "overview", label: "概览" },
-  { key: "transport", label: "连接" },
+  ...(canManage.value ? [{ key: "transport", label: "连接" }] : []),
   { key: "timetable", label: "课表" },
+  ...(canBind.value ? [{ key: "teachers", label: "教师" }] : []),
   { key: "capabilities", label: "能力" },
   { key: "commands", label: "命令" },
-] as const;
+]);
 const tab = ref<string>("overview");
 
 /** 设备长期不上报时是“离线未上报”，不是正在重同步，避免误判成服务端没跟插件对上。 */
@@ -54,8 +62,16 @@ const crashText = computed(() => {
 
 onMounted(async () => {
   try {
-    selected.value = await $fetch<DeviceDetail>(`/api/v1/admin/devices/${props.deviceId}`);
-    renameValue.value = selected.value.name;
+    const detail = await $fetch<DeviceDetail>(`/api/v1/admin/devices/${props.deviceId}`);
+    selected.value = detail;
+    renameValue.value = detail.name;
+    // 教师列表与课表配置只是下拉的数据源：角色看不到就留空，不该因此关掉整个详情。
+    const [accounts, configs] = await Promise.all([
+      can("users.read") ? $fetch<UserRow[]>("/api/v1/admin/users").catch(() => [] as UserRow[]) : Promise.resolve([] as UserRow[]),
+      canApply ? $fetch<ConfigurationRow[]>("/api/v1/admin/configurations").catch(() => [] as ConfigurationRow[]) : Promise.resolve([] as ConfigurationRow[]),
+    ]);
+    teacherAccounts.value = accounts.filter((account) => account.role === "teacher");
+    profileConfigs.value = configs.filter((row) => row.kind === "profile");
   } catch (err) {
     toast.err((err as { data?: { message?: string } })?.data?.message ?? "加载设备详情失败。");
     emit("close");
@@ -228,6 +244,77 @@ async function adoptTimetable() {
   } catch (err) { toast.err((err as { data?: { message?: string } })?.data?.message ?? "采纳失败。"); }
   finally { adopting.value = false; }
 }
+
+/** 套用课表（教师主路径）：把配置库里的一份课表下发到这台设备。 */
+type ConfigurationRow = { configurationId: string; name: string; kind: string; currentRevision: number | null };
+const profileConfigs = ref<ConfigurationRow[]>([]);
+const applyConfigId = ref("");
+const applying = ref(false);
+async function applyTimetable() {
+  const device = selected.value;
+  if (!device || !applyConfigId.value || applying.value) return;
+  applying.value = true;
+  try {
+    await $fetch(`/api/v1/admin/configurations/${applyConfigId.value}/deploy`, {
+      method: "POST", headers: { origin: location.origin },
+      body: { targets: [{ type: "device", id: device.id }] },
+    });
+    toast.ok("课表已下发，设备下次联系时生效。");
+  } catch (err) { toast.err((err as { data?: { message?: string } })?.data?.message ?? "套用课表失败。"); }
+  finally { applying.value = false; }
+}
+
+/** 教师绑定：管理端挑教师账号绑到本机；教师本人只能解自己的绑。 */
+type UserRow = { id: string; username: string; displayName: string; role: string };
+const teacherAccounts = ref<UserRow[]>([]);
+const bindUserId = ref("");
+const binding = ref(false);
+const unbinding = ref("");
+
+async function reloadDetail() {
+  try { selected.value = await $fetch<DeviceDetail>(`/api/v1/admin/devices/${props.deviceId}`); }
+  catch (err) { toast.err((err as { data?: { message?: string } })?.data?.message ?? "刷新设备详情失败。"); }
+}
+
+/** 可选的教师：还没绑到本机上的那几位。 */
+const bindCandidates = computed(() => {
+  const bound = new Set((selected.value?.teachers ?? []).map((teacher) => teacher.userId));
+  return teacherAccounts.value.filter((account) => !bound.has(account.id));
+});
+
+async function bindSelectedTeacher() {
+  const device = selected.value;
+  if (!device || !bindUserId.value || binding.value) return;
+  binding.value = true;
+  try {
+    await $fetch(`/api/v1/admin/devices/${device.id}/teachers`, { method: "POST", headers: { origin: location.origin }, body: { userId: bindUserId.value } });
+    bindUserId.value = "";
+    toast.ok("已绑定教师。");
+    await reloadDetail();
+  } catch (err) { toast.err((err as { data?: { message?: string } })?.data?.message ?? "绑定教师失败。"); }
+  finally { binding.value = false; }
+}
+
+function unbindTeacher(teacher: BoundTeacher) {
+  const device = selected.value;
+  if (!device) return;
+  pending.value = {
+    title: "解除教师绑定",
+    description: `解除 ${teacher.displayName} 与「${device.name}」的绑定？解绑后该教师在这台设备上不再有权限。`,
+    confirmText: "解除", danger: true, run: () => runUnbind(teacher),
+  };
+}
+async function runUnbind(teacher: BoundTeacher) {
+  const device = selected.value;
+  if (!device) return;
+  unbinding.value = teacher.userId;
+  try {
+    await $fetch(`/api/v1/admin/devices/${device.id}/teachers/${teacher.userId}`, { method: "DELETE", headers: { origin: location.origin } });
+    toast.ok("已解除绑定。");
+    await reloadDetail();
+  } catch (err) { toast.err((err as { data?: { message?: string } })?.data?.message ?? "解除绑定失败。"); }
+  finally { unbinding.value = ""; }
+}
 </script>
 
 <template>
@@ -240,10 +327,10 @@ async function adoptTimetable() {
     <template v-if="tab === 'overview'">
       <div class="detail-grid">
       <article><h3>版本</h3><dl><dt>插件版本</dt><dd>{{ selected.pluginVersion || "—" }}</dd><dt>宿主版本</dt><dd>{{ selected.appVersion || "—" }}</dd><dt>平台</dt><dd>{{ selected.platform || "—" }}</dd><dt>能力摘要</dt><dd>{{ selected.capabilityDigest || "—" }}</dd></dl></article>
-      <article><h3>同步</h3><dl><dt>期望策略</dt><dd>第 {{ selected.policyStatus?.desired.revision ?? selected.policyRevision }} 版</dd><dt>已应用</dt><dd>第 {{ selected.policyRevision }} 版</dd><dt>同步状态</dt><dd>{{ syncText }}</dd><dt>偏差计数</dt><dd>{{ selected.driftCount }}</dd><dt>崩溃记录</dt><dd>{{ crashText }} <NuxtLink class="crash-link" :to="`/crashes?deviceId=${selected.id}`">明细</NuxtLink></dd><dt>最近序号</dt><dd>{{ selected.lastSequence }}</dd><dt>最后联系</dt><dd>{{ selected.online ? "在线" : "离线" }} · {{ selected.lastSeenAt || "从未" }}</dd><dt>注册时间</dt><dd>{{ selected.createdAt }}</dd></dl></article>
+      <article><h3>同步</h3><dl><dt>期望策略</dt><dd>第 {{ selected.policyStatus?.desired.revision ?? selected.policyRevision }} 版</dd><dt>已应用</dt><dd>第 {{ selected.policyRevision }} 版</dd><dt>同步状态</dt><dd>{{ syncText }}</dd><dt>偏差计数</dt><dd>{{ selected.driftCount }}</dd><dt>崩溃记录</dt><dd>{{ crashText }} <NuxtLink v-if="can('crashes.read')" class="crash-link" :to="`/crashes?deviceId=${selected.id}`">明细</NuxtLink></dd><dt>最近序号</dt><dd>{{ selected.lastSequence }}</dd><dt>最后联系</dt><dd>{{ selected.online ? "在线" : "离线" }} · {{ selected.lastSeenAt || "从未" }}</dd><dt>注册时间</dt><dd>{{ selected.createdAt }}</dd></dl></article>
     </div>
-    <form class="rename" @submit.prevent="rename"><label>设备名称<input v-model.trim="renameValue" maxlength="100"></label><button :disabled="!renameValue.trim() || renameValue === selected.name">保存名称</button></form>
-    <div class="actions"><button type="button" @click="showPolicy = true">生效策略明细</button><button v-if="!selected.disabledAt" type="button" class="danger" @click="setDisabled(true)">禁用设备</button><button v-else type="button" @click="setDisabled(false)">恢复设备</button><button type="button" class="danger" @click="releaseDevice">解除集控</button><button type="button" class="danger" @click="removeDevice">删除设备</button></div>
+    <form v-if="canManage" class="rename" @submit.prevent="rename"><label>设备名称<input v-model.trim="renameValue" maxlength="100"></label><button :disabled="!renameValue.trim() || renameValue === selected.name">保存名称</button></form>
+    <div class="actions"><button type="button" @click="showPolicy = true">生效策略明细</button><template v-if="canManage"><button v-if="!selected.disabledAt" type="button" class="danger" @click="setDisabled(true)">禁用设备</button><button v-else type="button" @click="setDisabled(false)">恢复设备</button><button type="button" class="danger" @click="releaseDevice">解除集控</button><button type="button" class="danger" @click="removeDevice">删除设备</button></template></div>
     </template>
     <article v-else-if="tab === 'transport'" class="block">
       <div class="seg">
@@ -253,12 +340,21 @@ async function adoptTimetable() {
       <p class="muted">长连接不用反复握手，下次同步生效。</p>
     </article>
     <article v-else-if="tab === 'timetable'" class="block timetable-block">
+      <div v-if="canApply" class="apply-row">
+        <label>套用课表
+          <select v-model="applyConfigId">
+            <option value="">请选择课表配置</option>
+            <option v-for="row in profileConfigs" :key="row.configurationId" :value="row.configurationId">{{ row.name }} · 第 {{ row.currentRevision }} 版</option>
+          </select>
+        </label>
+        <button type="button" class="solid" :disabled="!applyConfigId || applying" @click="applyTimetable">{{ applying ? "下发中…" : "下发到本机" }}</button>
+      </div>
       <template v-if="selected.timetable">
         <div class="timetable-toolbar">
           <span class="timetable-summary">{{ timetableSummary() }}<template v-if="selected.timetableStatus"> · 摘要 {{ selected.timetableStatus.digest.slice(0, 12) }}…</template></span>
-          <button type="button" :disabled="adopting" @click="adoptTimetable">采纳为配置</button>
+          <button v-if="can('configurations.write')" type="button" :disabled="adopting" @click="adoptTimetable">采纳为配置</button>
         </div>
-        <p class="muted">「{{ selected.timetable.name || "未命名" }}」· {{ selected.timetableStatus?.uploadedAt || "—" }}。采纳后能在策略里发给别的设备。</p>
+        <p class="muted">「{{ selected.timetable.name || "未命名" }}」· {{ selected.timetableStatus?.uploadedAt || "—" }}</p>
         <div v-for="group in timetableEntries()" :key="group.id" class="timetable-group">
           <h4>{{ group.name }}<template v-if="group.isSelected"> · 当前选中</template><small v-if="group.isGlobal"> · 全局</small></h4>
           <div v-if="group.plans.length" class="timetable-plans">
@@ -274,6 +370,27 @@ async function adoptTimetable() {
         </div>
       </template>
       <p v-else class="muted">设备还没上传课表。</p>
+    </article>
+    <article v-else-if="tab === 'teachers'" class="block">
+      <ul v-if="selected.teachers?.length" class="teacher-list">
+        <li v-for="teacher in selected.teachers" :key="teacher.userId">
+          <div class="teacher-name"><strong>{{ teacher.displayName }}</strong><small>{{ teacher.username }}</small></div>
+          <span class="teacher-meta">{{ teacher.boundBy === "qr" ? "扫码绑定" : "管理端绑定" }} · {{ teacher.createdAt.slice(5, 16).replace("T", " ") }}</span>
+          <button type="button" class="ghost remove" :disabled="unbinding === teacher.userId" @click="unbindTeacher(teacher)">
+            {{ teacher.userId === user?.id ? "解除我的绑定" : "解绑" }}
+          </button>
+        </li>
+      </ul>
+      <p v-else class="muted">这台设备还没有教师绑定。</p>
+      <div v-if="can('users.read')" class="bind-row">
+        <label>绑定教师
+          <select v-model="bindUserId">
+            <option value="">请选择教师账号</option>
+            <option v-for="account in bindCandidates" :key="account.id" :value="account.id">{{ account.displayName }} · {{ account.username }}</option>
+          </select>
+        </label>
+        <button type="button" :disabled="!bindUserId || binding" @click="bindSelectedTeacher">{{ binding ? "绑定中…" : "绑定" }}</button>
+      </div>
     </article>
     <article v-else-if="tab === 'capabilities'" class="block"><ul v-if="capabilityEntries().length" class="caps"><li v-for="entry in capabilityEntries()" :key="entry.key"><code>{{ entry.key }}</code><span>{{ entry.value }}</span></li></ul><p v-else class="muted">还没上报能力。</p></article>
     <article v-else-if="tab === 'commands'" class="block"><ul v-if="selected.recentCommands.length" class="caps"><li v-for="command in selected.recentCommands" :key="command.id"><code>{{ labelOf(CAPABILITY_LABELS, command.capabilityId) }}</code><span>{{ labelOf(COMMAND_STATE_LABELS, command.state) }} · 尝试 {{ command.attemptCount }} · {{ command.createdAt }}</span></li></ul><p v-else class="muted">还没有下发记录。</p></article>
@@ -323,6 +440,20 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .caps li { display: flex; justify-content: space-between; gap: 16px; padding: 12px 2px; border-bottom: 1px solid var(--line-soft); font-size: 12px; }
 .caps code { font-family: ui-monospace, monospace; color: var(--ink-muted); }
 .caps span { color: var(--ink-soft); text-align: right; }
+/* 教师绑定与课表套用：与设备详情其余区块同一套发丝线刻度。 */
+.apply-row, .bind-row { display: flex; align-items: flex-end; gap: 14px; margin-bottom: 18px; }
+.apply-row { padding-bottom: 18px; border-bottom: 1px solid var(--line-soft); }
+.bind-row { margin: 18px 0 0; }
+.apply-row label, .bind-row label { display: grid; gap: 8px; flex: 1; color: var(--ink-muted); font-size: 11px; letter-spacing: 0.6px; }
+.apply-row select, .bind-row select { width: 100%; }
+.teacher-list { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--line-soft); }
+.teacher-list li { display: flex; align-items: center; gap: 16px; padding: 12px 2px; border-bottom: 1px solid var(--line-soft); }
+.teacher-name { display: grid; gap: 3px; min-width: 0; }
+.teacher-name strong { font-size: 13px; font-weight: 600; }
+.teacher-name small { color: var(--ink-faint); font-size: 10px; letter-spacing: 0.6px; }
+.teacher-meta { margin-left: auto; color: var(--ink-muted); font-size: 10px; letter-spacing: 0.6px; font-variant-numeric: tabular-nums; }
+.teacher-list .remove { min-height: 0; padding: 0 0 3px; border: 0; border-bottom: 1px solid transparent; background: none; color: var(--ink-muted); font-size: 11px; }
+.teacher-list .remove:hover:not(:disabled) { border-bottom-color: var(--bad); background: none; color: var(--bad); }
 @media (max-width: 780px) {
   .detail-grid { grid-template-columns: 1fr; }
   .rename { flex-direction: column; align-items: stretch; }

@@ -62,6 +62,27 @@ describe("role permission matrix", () => {
     expect(allows("viewer", "audit.read")).toBe(false);
   });
 
+  it("limits teacher to bound-device roll-call and timetable apply", () => {
+    expect(allows("teacher", "devices.read")).toBe(true);
+    expect(allows("teacher", "rollcall.read")).toBe(true);
+    expect(allows("teacher", "rollcall.write")).toBe(true);
+    expect(allows("teacher", "timetable.apply")).toBe(true);
+    expect(allows("teacher", "binding.write")).toBe(true);
+    expect(allows("teacher", "devices.write")).toBe(false);
+    expect(allows("teacher", "configurations.write")).toBe(false);
+    expect(allows("teacher", "users.read")).toBe(false);
+    expect(allows("teacher", "audit.read")).toBe(false);
+    expect(allows("teacher", "system.write")).toBe(false);
+  });
+
+  it("grants binding management to admin and operator but timetable apply only to admin", () => {
+    expect(allows("admin", "binding.write")).toBe(true);
+    expect(allows("admin", "timetable.apply")).toBe(true);
+    expect(allows("operator", "binding.write")).toBe(true);
+    expect(allows("operator", "timetable.apply")).toBe(false);
+    expect(allows("viewer", "binding.write")).toBe(false);
+  });
+
   it("denies every permission to an unknown role", () => {
     for (const permission of ["devices.read", "tasks.write", "audit.read", "*"])
       expect(allows("ghost", permission)).toBe(false);

@@ -3,7 +3,7 @@ import { revokeUserSessions } from "../../../../../utils/users";
 
 const updateSchema = z.object({
   displayName: z.string().trim().min(1).max(50).optional(),
-  role: z.enum(["owner", "admin", "operator", "auditor", "viewer"]).optional(),
+  role: z.enum(["owner", "admin", "operator", "auditor", "viewer", "teacher"]).optional(),
   password: z.string().min(12).max(128).optional(),
   scopeOrgNodeId: z.string().uuid().nullable().optional(),
 }).refine((value) => Object.keys(value).length > 0, { message: "至少提供一个更新字段。" });
@@ -37,7 +37,8 @@ export default defineEventHandler(async (event) => {
         database.prepare("UPDATE users SET scope_org_node_id=? WHERE id=?").run(input.data.scopeOrgNodeId, id);
       else if (input.data.role === "owner")
         database.prepare("UPDATE users SET scope_org_node_id=NULL WHERE id=?").run(id);
-      if (passwordHash) database.prepare("UPDATE users SET password_hash=? WHERE id=?").run(passwordHash, id);
+      // 管理员代设的口令只有操作者知道，交给本人首登时换掉。
+      if (passwordHash) database.prepare("UPDATE users SET password_hash=?, must_change_password=1 WHERE id=?").run(passwordHash, id);
       // 口令、角色或组织范围变化都会改变既有会话的授权含义，必须撤销并要求重新登录。
       const roleChanged = input.data.role !== undefined && input.data.role !== target.role;
       if (passwordHash || roleChanged || input.data.scopeOrgNodeId !== undefined) revokeUserSessions(database, id);

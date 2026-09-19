@@ -570,7 +570,48 @@ const autoTasks: Migration = {
   },
 };
 
-export const migrations: Migration[] = [baseline, taskOrchestration, enrollmentIdempotency, orgScopeRbac, policyEpochAndCas, taskPauseAndCancel, deviceResponseReplay, sessionsTable, enrollmentTokenTags, taskIdempotencyScope, auditCheckpoints, buildingLayout, policyAppendMode, deviceTransport, rollCallRoster, deviceTimetables, crashReports, autoTasks];
+const teacherAccounts: Migration = {
+  id: "0018-teacher-accounts",
+  up(db) {
+    // 教师角色要拓宽 users 的内联 CHECK，SQLite 只能整表重建。重建会级联掉 sessions
+    // （或把外键检查推到提交时刻），因此先把会话原样备份，id 不变地搬回，
+    // 让升级对已登录会话透明；defer_foreign_keys 只在本事务内生效。
+    db.exec("PRAGMA defer_foreign_keys = ON");
+    db.exec(`CREATE TABLE users_new (
+      id TEXT PRIMARY KEY,
+      username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      password_hash TEXT NOT NULL,
+      display_name TEXT NOT NULL,
+      role TEXT NOT NULL CHECK(role IN ('owner','admin','operator','auditor','viewer','teacher')),
+      created_at TEXT NOT NULL,
+      disabled_at TEXT,
+      scope_org_node_id TEXT REFERENCES org_nodes(id),
+      must_change_password INTEGER NOT NULL DEFAULT 0
+    ) STRICT`);
+    db.exec(`INSERT INTO users_new (id,username,password_hash,display_name,role,created_at,disabled_at,scope_org_node_id,must_change_password)
+      SELECT id,username,password_hash,display_name,role,created_at,disabled_at,scope_org_node_id,0 FROM users`);
+    db.exec("CREATE TABLE users_rebuild_sessions AS SELECT * FROM sessions");
+    db.exec("DROP TABLE users");
+    db.exec("ALTER TABLE users_new RENAME TO users");
+    db.exec("INSERT OR IGNORE INTO sessions SELECT * FROM users_rebuild_sessions");
+    db.exec("DROP TABLE users_rebuild_sessions");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_users_scope ON users(scope_org_node_id)");
+    // 教师与设备多对多：一台设备可绑多位教师，解绑一个账号不能牵连他人。
+    db.exec(`CREATE TABLE IF NOT EXISTS device_teachers (
+      device_id TEXT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      bound_by TEXT NOT NULL DEFAULT 'admin' CHECK(bound_by IN ('admin','qr')),
+      created_at TEXT NOT NULL,
+      PRIMARY KEY(device_id, user_id)
+    ) STRICT`);
+    db.exec("CREATE INDEX IF NOT EXISTS idx_device_teachers_user ON device_teachers(user_id)");
+    // 屏显绑定码：设备经签名通道领取一次性码，教师端（未来手机端）扫码兑换绑定；只存哈希。
+    addColumn(db, "devices", "binding_code_hash", "TEXT");
+    addColumn(db, "devices", "binding_code_expires_at", "TEXT");
+  },
+};
+
+export const migrations: Migration[] = [baseline, taskOrchestration, enrollmentIdempotency, orgScopeRbac, policyEpochAndCas, taskPauseAndCancel, deviceResponseReplay, sessionsTable, enrollmentTokenTags, taskIdempotencyScope, auditCheckpoints, buildingLayout, policyAppendMode, deviceTransport, rollCallRoster, deviceTimetables, crashReports, autoTasks, teacherAccounts];
 
 /** 对除 schema_migrations 外的全部 schema 对象做稳定指纹，用于校验迁移记录与真实 schema 是否一致。 */
 export function schemaFingerprint(db: Database.Database) {

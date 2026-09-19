@@ -2,9 +2,17 @@ import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import { nowIso } from "./database";
 import { appendAuditWithin } from "./security";
-import { assertDeviceInScope, assertOrgNodeInScope, type ScopeUser } from "./scope";
+import { assertDeviceInScope, assertOrgNodeInScope, deviceScopeFilter, hasSchoolWideScope, type ScopeUser } from "./scope";
 
 export type RollCallScopeType = "school" | "organization" | "device";
+
+/** 某台设备当前生效的名单，含命中层级：教师据此知道这份名单是不是自己改得动的。 */
+export type DeviceRollCallState = {
+  revision: number;
+  names: string[];
+  scopeType: RollCallScopeType | "none";
+  rosterId: string | null;
+};
 
 export type RollCallRoster = {
   id: string;
@@ -83,7 +91,12 @@ function allocateRevision(db: Database.Database): number {
 
 /** 作用域目标必须真实存在且落在写入者的可见范围内。 */
 function assertScopeTarget(db: Database.Database, user: ScopeUser, scopeType: RollCallScopeType, scopeId: string | null) {
-  if (scopeType === "school") return;
+  if (scopeType === "school") {
+    // 全校名单会命中所有设备：教师（靠绑定）与组织范围账号（靠子树）都没有这一层的授权。
+    if (!hasSchoolWideScope(user))
+      throw createError({ statusCode: 403, message: "当前账号的范围不足以保存全校点名名单。" });
+    return;
+  }
   if (!scopeId) throw createError({ statusCode: 400, message: "该作用域必须指定目标。" });
   if (scopeType === "organization") {
     if (!db.prepare("SELECT 1 FROM org_nodes WHERE id=?").get(scopeId))
@@ -143,21 +156,34 @@ export function deleteRollCallRoster(db: Database.Database, user: ScopeUser, id:
 /**
  * 设备实际生效的名单：设备级 > 最近的祖先组织级 > 全校级。
  * 都没命中时返回空名单，设备据此清空本地缓存。
+ * 返回值额外标明命中层级，供受限账号判断这份名单是不是自己改得动的。
  */
-export function resolveRollCallForDevice(db: Database.Database, deviceId: string): { revision: number; names: string[] } {
+export function resolveRollCallForDevice(db: Database.Database, deviceId: string): DeviceRollCallState {
   const device = db.prepare("SELECT org_node_id orgNodeId FROM devices WHERE id=?").get(deviceId) as { orgNodeId: string | null } | undefined;
-  if (!device) return { revision: 0, names: [] };
+  if (!device) return { revision: 0, names: [], scopeType: "none", rosterId: null };
   const direct = findRoster(db, "device", deviceId);
-  if (direct) return { revision: direct.revision, names: direct.names };
+  if (direct) return mapState(direct, "device");
   // seen 防御组织树意外成环，避免轮询死循环。
   const seen = new Set<string>();
   let nodeId = device.orgNodeId;
   while (nodeId && !seen.has(nodeId)) {
     seen.add(nodeId);
     const roster = findRoster(db, "organization", nodeId);
-    if (roster) return { revision: roster.revision, names: roster.names };
+    if (roster) return mapState(roster, "organization");
     nodeId = (db.prepare("SELECT parent_id parentId FROM org_nodes WHERE id=?").get(nodeId) as { parentId: string | null } | undefined)?.parentId ?? null;
   }
   const school = findRoster(db, "school", null);
-  return school ? { revision: school.revision, names: school.names } : { revision: 0, names: [] };
+  return school ? mapState(school, "school") : { revision: 0, names: [], scopeType: "none", rosterId: null };
+}
+
+function mapState(roster: RollCallRoster, scopeType: RollCallScopeType): DeviceRollCallState {
+  return { revision: roster.revision, names: roster.names, scopeType, rosterId: roster.id };
+}
+
+/** 调用者可见设备逐台的生效名单；教师据此只看到自己绑定的设备。 */
+export function listEffectiveRollCall(db: Database.Database, user: ScopeUser) {
+  const scope = deviceScopeFilter(db, user);
+  const devices = db.prepare(`SELECT d.id deviceId,d.name deviceName FROM devices d WHERE ${scope.sql} AND d.disabled_at IS NULL ORDER BY d.name`)
+    .all(...scope.params) as { deviceId: string; deviceName: string }[];
+  return devices.map((device) => ({ ...device, ...resolveRollCallForDevice(db, device.deviceId) }));
 }

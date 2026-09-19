@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import Database from "better-sqlite3";
 import { migrate } from "../server/migrations";
-import { UserError, revokeUserSessions, setUserDisabled } from "../server/utils/users";
+
+type HttpError = Error & { statusCode?: number };
+(globalThis as unknown as { createError: (opts: { statusCode: number; message: string }) => HttpError }).createError =
+  (opts) => Object.assign(new Error(opts.message), { statusCode: opts.statusCode });
+
+import { assertNoPendingPasswordChange } from "../server/utils/auth";
+import { UserError, applyPasswordChange, revokeUserSessions, setUserDisabled } from "../server/utils/users";
 
 const NOW = "2026-09-11T00:00:00.000Z";
 const LATER = "2026-09-11T01:00:00.000Z";
@@ -38,6 +44,15 @@ function expectUserError(run: () => unknown, statusCode: number) {
   } catch (error) {
     expect(error).toBeInstanceOf(UserError);
     expect((error as UserError).statusCode).toBe(statusCode);
+  }
+}
+
+function expectHttpStatus(run: () => unknown, statusCode: number) {
+  try {
+    run();
+    throw new Error("expected request to be refused");
+  } catch (error) {
+    expect((error as HttpError).statusCode).toBe(statusCode);
   }
 }
 
@@ -93,5 +108,58 @@ describe("user lifecycle", () => {
     expect(revokeUserSessions(db, "u1")).toBe(2);
     expect(sessionCount(db, "u1")).toBe(0);
     expect(sessionCount(db, "u2")).toBe(1);
+  });
+});
+
+describe("self-service password change", () => {
+  function passwordHash(db: Database.Database, userId: string) {
+    return (db.prepare("SELECT password_hash passwordHash FROM users WHERE id=?").get(userId) as { passwordHash: string }).passwordHash;
+  }
+
+  function mustChange(db: Database.Database, userId: string) {
+    return (db.prepare("SELECT must_change_password mustChange FROM users WHERE id=?").get(userId) as { mustChange: number }).mustChange;
+  }
+
+  function auditActions(db: Database.Database) {
+    return (db.prepare("SELECT action FROM audit_events ORDER BY sequence").all() as { action: string }[]).map((row) => row.action);
+  }
+
+  it("swaps the hash, clears the forced-change flag and keeps only the acting session", () => {
+    const db = createDb();
+    seedUser(db, "u1");
+    db.prepare("UPDATE users SET must_change_password=1 WHERE id='u1'").run();
+    seedSession(db, "s1", "u1");
+    seedSession(db, "s2", "u1");
+    expect(mustChange(db, "u1")).toBe(1);
+
+    applyPasswordChange(db, { userId: "u1", sessionId: "s1", passwordHash: "new-hash" }, LATER);
+
+    expect(passwordHash(db, "u1")).toBe("new-hash");
+    expect(mustChange(db, "u1")).toBe(0);
+    expect(sessionCount(db, "u1")).toBe(1);
+    expect((db.prepare("SELECT id FROM sessions").get() as { id: string }).id).toBe("s1");
+    expect(auditActions(db)).toContain("user.password.change");
+  });
+
+  it("leaves other accounts' sessions intact", () => {
+    const db = createDb();
+    seedUser(db, "u1");
+    seedUser(db, "u2");
+    seedSession(db, "s1", "u1");
+    seedSession(db, "s2", "u1");
+    seedSession(db, "s3", "u2");
+    applyPasswordChange(db, { userId: "u1", sessionId: "s1", passwordHash: "new-hash" });
+    expect(sessionCount(db, "u2")).toBe(1);
+    expect(passwordHash(db, "u2")).toBe("hash");
+  });
+
+  it("reports a missing account as 404", () => {
+    const db = createDb();
+    expectUserError(() => applyPasswordChange(db, { userId: "ghost", sessionId: "s1", passwordHash: "new-hash" }), 404);
+  });
+
+  it("refuses admin operations until the initial password has been changed", () => {
+    expectHttpStatus(() => assertNoPendingPasswordChange({ mustChangePassword: true }), 403);
+    expect(() => assertNoPendingPasswordChange({ mustChangePassword: false })).not.toThrow();
   });
 });

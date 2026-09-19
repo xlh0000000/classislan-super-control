@@ -3,6 +3,7 @@ import { materializeConfigReferences, resolvePolicyForDeviceFromDb } from "../..
 import { canonicalJson, sha256 } from "../../../../../utils/security";
 import { readDeviceTimetable } from "../../../../../utils/device-timetable";
 import { deviceCrashSummary } from "../../../../../utils/crash-reports";
+import { listDeviceTeachers } from "../../../../../utils/teacher-bindings";
 
 export default defineEventHandler((event) => {
   const user = event.context.user as { id: string; role: string; scopeOrgNodeId?: string | null };
@@ -72,6 +73,7 @@ export default defineEventHandler((event) => {
     appliedPolicySections: appliedSections,
     capabilitySnapshot: capabilities,
     tagIds: tags.map((tag) => tag.tagId),
+    teachers: listDeviceTeachers(db, id),
     recentCommands: recent,
     policyStatus,
     // 课表档案（贡献者：威廉）：设备经轮询上报的本地课表快照与存档状态。

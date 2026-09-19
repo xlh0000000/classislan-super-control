@@ -19,6 +19,8 @@ const NOW = "2026-09-12T00:00:00.000Z";
 const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const owner = { id: "user-owner", role: "owner" };
 const scoped = { id: "user-scoped", role: "admin", scopeOrgNodeId: uuid(90) };
+/** 教师权限只来自 device_teachers 绑定。 */
+const teacher = { id: "user-teacher", role: "teacher" };
 
 /** 课表页保存的 profile 配置文档就是 ClassIsland 原始档案结构。 */
 const PROFILE_DOCUMENT = { schemaVersion: 1, name: "高一(1)班", timeLayouts: { [uuid(60)]: { name: "默认", layouts: [] } } };
@@ -33,6 +35,7 @@ function createDb() {
   const user = db.prepare("INSERT INTO users (id,username,password_hash,display_name,role,scope_org_node_id,created_at) VALUES (?,?,?,?,?,?,?)");
   user.run(owner.id, "owner", "hash", "owner", "owner", null, NOW);
   user.run(scoped.id, "scoped", "hash", "scoped", "admin", uuid(90), NOW);
+  user.run(teacher.id, "teacher", "hash", "teacher", "teacher", null, NOW);
   const device = db.prepare("INSERT INTO devices (id,name,org_node_id,public_key_jwk,key_thumbprint,created_at) VALUES (?,?,?,?,?,?)");
   device.run(uuid(1), "高一(1)班", uuid(91), "{}", "thumb-1", NOW);
   device.run(uuid(2), "高一(2)班", null, "{}", "thumb-2", NOW);
@@ -49,6 +52,11 @@ function seedConfiguration(db: Database.Database, id: string, kind: string, docu
   db.prepare("INSERT INTO configuration_revisions (id,configuration_id,kind,name,revision,document,document_hash,created_by,created_at) VALUES (?,?,?,?,1,?,?,?,?)")
     .run(revisionId, id, kind, name, JSON.stringify(document), "hash", owner.id, NOW);
   db.prepare("UPDATE configurations SET current_revision_id=? WHERE id=?").run(revisionId, id);
+}
+
+/** 教师对设备的下发权限完全来自绑定行。 */
+function bindTeacher(db: Database.Database, deviceId: string) {
+  db.prepare("INSERT INTO device_teachers (device_id,user_id,bound_by,created_at) VALUES (?,?,'admin',?)").run(deviceId, teacher.id, NOW);
 }
 
 function activeAssignment(db: Database.Database, scopeType: string, scopeId: string | null) {
@@ -158,5 +166,40 @@ describe("configuration deploy", () => {
       targets: [{ type: "device", id: uuid(1) }, { type: "device", id: uuid(99) }],
     }, owner), 404);
     expect(activeAssignment(db, "device", uuid(1))).toBeUndefined();
+  });
+});
+
+describe("教师下发课表", () => {
+  it("可以把课表套到自己绑定的设备上", () => {
+    const db = createDb();
+    seedConfiguration(db, uuid(10), "profile", PROFILE_DOCUMENT);
+    bindTeacher(db, uuid(1));
+    const result = deployConfiguration(db, { configurationId: uuid(10), targets: [{ type: "device", id: uuid(1) }] }, teacher);
+    expect(result.section).toBe("profile");
+    expect(resolvePolicyForDeviceFromDb(db, uuid(1)).document).toEqual({ profile: { $config: uuid(10) } });
+    expect((db.prepare("SELECT actor_id actorId FROM audit_events WHERE action='configuration.deploy'").get() as { actorId: string }).actorId).toBe(teacher.id);
+  });
+
+  it("碰不到别人的设备与全校、标签、组织范围", () => {
+    const db = createDb();
+    seedConfiguration(db, uuid(10), "profile", PROFILE_DOCUMENT);
+    bindTeacher(db, uuid(1));
+    expectPolicyError(() => deployConfiguration(db, { configurationId: uuid(10), targets: [{ type: "device", id: uuid(2) }] }, teacher), 404);
+    expectPolicyError(() => deployConfiguration(db, { configurationId: uuid(10), targets: [{ type: "school" }] }, teacher), 403);
+    expectPolicyError(() => deployConfiguration(db, { configurationId: uuid(10), targets: [{ type: "tag", id: uuid(5) }] }, teacher), 403);
+    expectPolicyError(() => deployConfiguration(db, { configurationId: uuid(10), targets: [{ type: "organization", id: uuid(91) }] }, teacher), 404);
+    expect(activeAssignment(db, "device", uuid(1))).toBeUndefined();
+  });
+
+  it("掺进一个越权目标时整批回滚", () => {
+    const db = createDb();
+    seedConfiguration(db, uuid(10), "profile", PROFILE_DOCUMENT);
+    bindTeacher(db, uuid(1));
+    expectPolicyError(() => deployConfiguration(db, {
+      configurationId: uuid(10),
+      targets: [{ type: "device", id: uuid(1) }, { type: "device", id: uuid(3) }],
+    }, teacher), 404);
+    expect(activeAssignment(db, "device", uuid(1))).toBeUndefined();
+    expect(db.prepare("SELECT COUNT(*) count FROM audit_events WHERE action='configuration.deploy'").get()).toMatchObject({ count: 0 });
   });
 });

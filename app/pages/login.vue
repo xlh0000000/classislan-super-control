@@ -21,7 +21,7 @@ async function submit() {
       <h1>CLASSISLAND</h1>
       <div class="sub">集控台 · CONTROL</div>
       <i class="rule" />
-      <p>只有管理员能登录。所有改动都会留记录。</p>
+      <p>账号由管理员发放。只有授权账号能登录，所有改动都会留记录。</p>
     </section>
     <form @submit.prevent="submit">
       <span class="micro">登录</span>

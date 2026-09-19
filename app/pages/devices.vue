@@ -3,6 +3,9 @@ type DeviceRow = { id: string; name: string; pluginVersion: string; appVersion: 
 const { data: devices, refresh } = await useFetch<DeviceRow[]>("/api/v1/admin/devices", { default: () => [] });
 const detailId = ref<string | null>(null);
 const toast = useToast();
+const { can } = useSession();
+/** 教师看的是自己绑定的设备：批量动作与接入入口对他都没有意义。 */
+const canManage = computed(() => can("devices.write"));
 const { deviceIds, summary: targetSummary, count: targetCount, empty: targetEmpty } = useTargetSelection();
 const showTargets = ref(false);
 
@@ -65,10 +68,10 @@ async function runBulkTransport(transport: "http" | "websocket") {
 </script>
 
 <template>
-  <PageHeading kicker="每台终端的状态" title="设备">
-    <NuxtLink to="/enrollment">接入设备</NuxtLink>
+  <PageHeading :kicker="canManage ? '每台终端的状态' : '绑定到你的终端'" title="设备">
+    <NuxtLink v-if="can('enrollment.write')" to="/enrollment">接入设备</NuxtLink>
   </PageHeading>
-  <section class="bulk">
+  <section v-if="canManage" class="bulk">
     <div><span>批量下发</span><strong>{{ targetEmpty ? "未选择目标" : targetSummary }}</strong><small>{{ targetCount }} 台设备</small></div>
     <div class="bulk-actions">
       <button type="button" class="solid pick" @click="showTargets = true">选择目标</button>
@@ -83,7 +86,7 @@ async function runBulkTransport(transport: "http" | "websocket") {
       <tbody><tr v-for="device in devices" :key="device.id" :class="{ selected: detailId === device.id }"><td><strong>{{ device.name }}</strong><small>{{ device.id }}</small></td><td>{{ device.orgName }}</td><td><span class="state" :data-online="device.online" :data-disabled="device.disabled">{{ device.disabled ? "已禁用" : device.online ? "在线" : "离线" }}</span></td><td>{{ device.transport === "websocket" ? "长连接" : "轮询" }}</td><td>{{ device.pluginVersion }} / {{ device.appVersion }}</td><td>{{ device.lastSeen || "从未" }}</td><td class="row-actions"><button type="button" @click="detailId = device.id">详情</button></td></tr></tbody>
     </table>
   </div>
-  <EmptyState v-else title="还没有设备接入" action="创建接入凭据" to="/enrollment" />
+  <EmptyState v-else :title="canManage ? '还没有设备接入' : '还没有绑定到你的设备'" :action="can('enrollment.write') ? '创建接入凭据' : ''" :to="can('enrollment.write') ? '/enrollment' : ''" />
   <TargetPickerDialog v-if="showTargets" @close="showTargets = false" />
   <DeviceDetailDialog v-if="detailId" :device-id="detailId" @close="detailId = null" @changed="refresh" />
   <ConfirmDialog

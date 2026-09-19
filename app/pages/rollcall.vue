@@ -4,23 +4,37 @@ type Roster = {
   id: string; name: string; scopeType: ScopeType; scopeId: string | null;
   names: string[]; revision: number; updatedAt: string;
 };
+/** 逐台设备的生效名单：命中层级告诉教师这份名单是不是自己改得动的。 */
+type EffectiveDevice = {
+  deviceId: string; deviceName: string; names: string[]; revision: number;
+  scopeType: ScopeType | "none"; rosterId: string | null;
+};
 type OrgData = { nodes: { id: string; name: string; path: string }[] };
 type DeviceRow = { id: string; name: string; orgName: string };
 
 const toast = useToast();
+const { user } = useSession();
+/** 教师没有名单库与组织树，只能看到自己设备上的生效名单。 */
+const teacherView = user.value?.role === "teacher";
 const { data, refresh } = await useFetch<{ rosters: Roster[] }>("/api/v1/admin/rollcall", {
   default: () => ({ rosters: [] }),
+  immediate: !teacherView,
 });
 const { data: org } = await useFetch<OrgData>("/api/v1/admin/organization", {
   default: () => ({ nodes: [] }),
+  immediate: !teacherView,
 });
 const { data: deviceList } = await useFetch<DeviceRow[]>("/api/v1/admin/devices", { default: () => [] });
+const { data: effective, refresh: refreshEffective } = await useFetch<{ devices: EffectiveDevice[] }>("/api/v1/admin/rollcall/effective", {
+  default: () => ({ devices: [] }),
+  immediate: teacherView,
+});
 
 const draft = ref<{ id: string | null; name: string; scopeType: ScopeType; scopeId: string; names: string } | null>(null);
 const pending = ref(false);
 const removing = ref<Roster | null>(null);
 
-const scopeText: Record<ScopeType, string> = { school: "全校", organization: "组织", device: "设备" };
+const scopeText: Record<ScopeType | "none", string> = { school: "全校", organization: "组织", device: "设备", none: "未设置" };
 
 function scopeLabel(roster: Roster) {
   if (roster.scopeType === "school") return "全校";
@@ -36,6 +50,17 @@ function openCreate() {
 
 function openEdit(roster: Roster) {
   draft.value = { id: roster.id, name: roster.name, scopeType: roster.scopeType, scopeId: roster.scopeId ?? "", names: roster.names.join("\n") };
+}
+
+/** 教师改的是本机覆盖名单：以生效名单为起点，保存后就盖住上级名单。 */
+function openDeviceEdit(row: EffectiveDevice) {
+  draft.value = {
+    id: row.scopeType === "device" ? row.rosterId : null,
+    name: row.deviceName,
+    scopeType: "device",
+    scopeId: row.deviceId,
+    names: row.names.join("\n"),
+  };
 }
 
 async function save() {
@@ -55,10 +80,29 @@ async function save() {
         names: value.names.split(/\r?\n/),
       },
     });
-    await refresh();
+    if (teacherView) await refreshEffective();
+    else await refresh();
     draft.value = null;
     toast.ok("名单已保存并开始下发。");
   } catch (err) { toast.err((err as { data?: { message?: string } })?.data?.message ?? "保存名单失败。"); }
+  finally { pending.value = false; }
+}
+
+/** 删除本机覆盖名单：设备会退回上一级（组织或全校）名单。 */
+const removingDevice = ref<EffectiveDevice | null>(null);
+async function removeDeviceRoster() {
+  const row = removingDevice.value;
+  if (!row?.rosterId) return;
+  pending.value = true;
+  try {
+    await $fetch(`/api/v1/admin/rollcall/${row.rosterId}`, {
+      method: "DELETE" as const,
+      headers: import.meta.client ? { origin: window.location.origin } : undefined,
+    });
+    await refreshEffective();
+    removingDevice.value = null;
+    toast.ok("已删除本机名单，退回上级名单。");
+  } catch (err) { toast.err((err as { data?: { message?: string } })?.data?.message ?? "删除名单失败。"); }
   finally { pending.value = false; }
 }
 
@@ -80,10 +124,31 @@ async function remove() {
 </script>
 
 <template>
-  <PageHeading kicker="名单下发给设备悬浮窗" title="点名名单">
-    <button type="button" class="solid" @click="openCreate">新增名单</button>
+  <PageHeading :kicker="teacherView ? '跟着设备生效' : '名单下发给设备悬浮窗'" :title="teacherView ? '我的点名名单' : '点名名单'">
+    <button v-if="!teacherView" type="button" class="solid" @click="openCreate">新增名单</button>
   </PageHeading>
 
+  <template v-if="teacherView">
+    <EmptyState v-if="!effective.devices.length" title="还没有绑定到你的设备" action="查看设备" to="/devices" />
+    <section v-else class="rosters">
+      <article v-for="row in effective.devices" :key="row.deviceId">
+        <header>
+          <strong>{{ row.deviceName }}</strong>
+          <span class="scope">{{ scopeText[row.scopeType] }}</span>
+        </header>
+        <p class="names">{{ row.names.length ? `${row.names.slice(0, 12).join("、")}${row.names.length > 12 ? " …" : ""}` : "暂无姓名" }}</p>
+        <footer>
+          <small>{{ row.names.length }} 人 · 第 {{ row.revision }} 版</small>
+          <div>
+            <button type="button" class="ghost" @click="openDeviceEdit(row)">编辑</button>
+            <button v-if="row.scopeType === 'device' && row.rosterId" type="button" class="ghost remove" @click="removingDevice = row">删除</button>
+          </div>
+        </footer>
+      </article>
+    </section>
+  </template>
+
+  <template v-else>
   <EmptyState v-if="!data.rosters.length" title="还没有点名名单" />
 
   <section v-else class="rosters">
@@ -102,9 +167,10 @@ async function remove() {
       </footer>
     </article>
   </section>
+  </template>
 
-  <AppDialog v-if="draft" :title="draft.id ? '编辑名单' : '新增名单'" kicker="选好范围，填上姓名" width="640px" @close="draft = null">
-    <div class="form">
+  <AppDialog v-if="draft" :title="teacherView ? `编辑 ${draft.name}` : (draft.id ? '编辑名单' : '新增名单')" :kicker="teacherView ? '每行一个姓名' : '选好范围，填上姓名'" width="640px" @close="draft = null">
+    <div v-if="!teacherView" class="form">
       <label>名单名称<input v-model="draft.name" maxlength="60" placeholder="例如：高一（2）班"></label>
       <label>作用范围
         <select v-model="draft.scopeType" @change="draft.scopeId = ''">
@@ -144,6 +210,17 @@ async function remove() {
     :busy="pending"
     @close="removing = null"
     @confirm="remove"
+  />
+
+  <ConfirmDialog
+    v-if="removingDevice"
+    title="删除本机名单"
+    :description="`确定删除「${removingDevice.deviceName}」的本机名单？该设备改用上级名单。`"
+    confirm-text="删除"
+    danger
+    :busy="pending"
+    @close="removingDevice = null"
+    @confirm="removeDeviceRoster"
   />
 </template>
 

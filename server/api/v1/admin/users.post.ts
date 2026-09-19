@@ -5,7 +5,7 @@ const createUserSchema = z.object({
   username: z.string().trim().min(3).max(32).regex(/^[A-Za-z0-9_.-]+$/),
   password: z.string().min(12).max(128),
   displayName: z.string().trim().min(1).max(50).optional(),
-  role: z.enum(["admin", "operator", "auditor", "viewer"]),
+  role: z.enum(["admin", "operator", "auditor", "viewer", "teacher"]),
   scopeOrgNodeId: z.string().uuid().nullable().optional(),
 });
 

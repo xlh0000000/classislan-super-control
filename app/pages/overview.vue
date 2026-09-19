@@ -1,4 +1,5 @@
 <script setup lang="ts">
+const { can } = useSession();
 const { data } = await useFetch("/api/v1/admin/dashboard", {
   default: () => ({
     devices: { total: 0, online: 0, drifted: 0 },
@@ -12,7 +13,7 @@ const tiles = computed(() => [
   { label: "受管设备", value: data.value.devices.total, tone: "normal" as const },
   { label: "当前在线", value: data.value.devices.online, tone: "good" as const },
   { label: "策略偏差", value: data.value.devices.drifted, tone: "warning" as const },
-  { label: "执行中任务", value: data.value.tasks.active, tone: "normal" as const },
+  ...(can("tasks.read") ? [{ label: "执行中任务", value: data.value.tasks.active, tone: "normal" as const }] : []),
 ]);
 </script>
 
@@ -55,19 +56,19 @@ const tiles = computed(() => [
     </article>
   </section>
 
-  <section class="panel activity">
+  <section v-if="can('audit.read') || can('tasks.read')" class="panel activity">
     <header class="panel-head">
       <h2>最近发生</h2>
-      <NuxtLink to="/tasks">任务 <i class="arrow">→</i></NuxtLink>
+      <NuxtLink v-if="can('tasks.read')" to="/tasks">任务 <i class="arrow">→</i></NuxtLink>
     </header>
     <div class="activity-grid">
-      <ul class="list">
+      <ul v-if="can('audit.read')" class="list">
         <li v-for="entry in data.recent.audit" :key="entry.sequence">
           <div class="row-main"><strong>{{ entry.summary }}</strong><small>{{ entry.createdAt }}</small></div>
         </li>
         <li v-if="!data.recent.audit.length"><div class="row-main"><small>还没有操作记录</small></div></li>
       </ul>
-      <ul class="list">
+      <ul v-if="can('tasks.read')" class="list">
         <li v-for="task in data.recent.tasks" :key="task.id">
           <div class="row-main"><strong>{{ task.name }}</strong><small>{{ labelOf(TASK_STATE_LABELS, task.state) }} · {{ labelOf(CAPABILITY_LABELS, task.capabilityId) }}</small></div>
         </li>
@@ -81,7 +82,7 @@ const tiles = computed(() => [
 .revision { display: grid; justify-items: end; gap: 4px; padding-right: 4px; }
 .revision span { color: var(--ink-muted); font-size: 10px; letter-spacing: 1.2px; }
 .revision strong { font-size: 26px; font-weight: 600; letter-spacing: -0.6px; font-variant-numeric: tabular-nums; }
-.metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 14px; }
 .workspace { display: grid; grid-template-columns: 1.6fr 1fr; gap: 14px; margin-top: 14px; }
 .panel { min-height: 280px; }
 .fleet-number { display: flex; align-items: baseline; gap: 12px; margin-top: 46px; }

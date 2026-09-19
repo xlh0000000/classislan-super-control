@@ -11,6 +11,7 @@ import { signResponseBody } from "./server-signing";
 import { timetableDigestMatches, upsertDeviceTimetable } from "./device-timetable";
 import { recordCrashReports } from "./crash-reports";
 import { evaluateCrashTriggers } from "./auto-triggers";
+import { issueBindingCode } from "./teacher-bindings";
 
 export type DevicePollInput = z.infer<typeof pollSchema>;
 
@@ -191,6 +192,8 @@ export function processDevicePoll(
       // 崩溃阈值触发器：新崩溃入库后当场评估，派生动作与本次 poll 同事务落库。
       if (ingested.accepted > 0) evaluateCrashTriggers(db, deviceId, seenAt);
     }
+    // 教师绑定码：设备主动申请才签发，明文只出现在这次已签名的响应里，库里只留哈希。
+    const bindingCode = input.bindingCodeRequested ? issueBindingCode(db, deviceId, seenAt) : null;
     const responseBody = JSON.stringify({
       serverTimeUtc: seenAt,
       // 连接模式随每次响应回带：管理端改动后，设备在下一轮就自动切换传输。
@@ -198,6 +201,8 @@ export function processDevicePoll(
       nextPollSeconds: commands.length ? 5 : input.driftCount ? 15 : 30,
       // 课表重传要求：客户端据此决定下一轮是否携带全量快照。
       timetableRequired,
+      // 绑定码有效期：设备据此决定屏上停留多久、何时再要一张。
+      bindingCode,
       // 逐条回执：设备只删除被明确接受的 ACK，冲突结果保留并告警。
       acknowledgements: receipts,
       // 点名名单：仅在设备手上的修订过期时回带整份名单，避免每轮重复下发。
