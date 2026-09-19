@@ -2,7 +2,7 @@
 import { settingsLockFields, settingsPageFields, settingsPagePrefix } from "#shared/schemas";
 
 type Policy = { id: string; revision: number; name: string; documentHash: string; baseRevision: number | null; createdAt: string; assignmentId: string | null; scopeType: string | null; scopeId: string | null; priority: number | null; locks: string | null; mode: string | null };
-type ConfigRow = { configurationId: string; kind: string; name: string; revision: number };
+type ConfigRow = { configurationId: string; kind: string; name: string; currentRevision: number | null };
 const { data, refresh } = await useFetch<Policy[]>("/api/v1/admin/policies", { default: () => [] });
 const { data: configs } = await useFetch<ConfigRow[]>("/api/v1/admin/configurations", { default: () => [] });
 const { devices, org, enabledDevices, subtreeIds, targets, summary: targetSummary, count: targetCount } = useTargetSelection();
@@ -214,7 +214,7 @@ onMounted(() => { if (useRoute().query.new) showEditor.value = true; });
           <label class="toggle"><input v-model="sectionEnabled[section.key]" type="checkbox" @change="rebuildDocument"><span>{{ section.label }}</span></label>
           <select v-model="sectionConfigId[section.key]" :disabled="!sectionEnabled[section.key]" @change="rebuildDocument">
             <option value="">选择要引用的配置…</option>
-            <option v-for="config in configsOfKind(section.kind)" :key="config.configurationId" :value="config.configurationId">{{ config.name }} · 第 {{ config.revision }} 版</option>
+            <option v-for="config in configsOfKind(section.kind)" :key="config.configurationId" :value="config.configurationId">{{ config.name }} · {{ revisionLabel(config.currentRevision) }}</option>
           </select>
           <small v-if="sectionEnabled[section.key] && !configsOfKind(section.kind).length">配置库里还没有这类配置。</small>
         </div>

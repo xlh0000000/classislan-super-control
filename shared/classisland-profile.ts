@@ -8,6 +8,8 @@
 
 export const DEFAULT_CLASS_PLAN_GROUP_ID = "acaf4ef0-e261-4262-b941-34ea93cb4369";
 export const GLOBAL_CLASS_PLAN_GROUP_ID = "00000000-0000-0000-0000-000000000000";
+/** 档案里没有时间表时补的那张默认时间表用固定 id：同一份文档在服务端与客户端必须解析成同一个 id。 */
+export const DEFAULT_TIME_LAYOUT_ID = "00000000-0000-4000-8000-00000000f001";
 
 export const WEEKDAYS: { value: number; label: string }[] = [
   { value: 1, label: "周一" },
@@ -231,7 +233,8 @@ export function readProfile(raw: unknown): CiProfile {
     name: asString(ciGet(root, "name"), "档案"),
     timeLayouts: Object.entries(layouts).map(([id, value]) => readTimeLayout(id, value)),
     classPlans: Object.entries(plans).map(([id, value]) => readClassPlan(id, value)),
-    subjects: Object.entries(subjects).map(([id, value]) => readSubject(id, value)).sort((a, b) => a.name.localeCompare(b.name, "zh-CN")),
+    // 保持文档顺序，不按名称重排：墙上的数字快捷键取列表位置，宿主默认档案的第一位是语文。
+    subjects: Object.entries(subjects).map(([id, value]) => readSubject(id, value)),
     classPlanGroups: Object.entries(groups).map(([id, value]) => readGroup(id, value)),
     selectedClassPlanGroupId: asString(ciGet(root, "selectedClassPlanGroupId"), DEFAULT_CLASS_PLAN_GROUP_ID),
     extra: extraKeys(root, MANAGED_ROOT_KEYS),
@@ -241,7 +244,7 @@ export function readProfile(raw: unknown): CiProfile {
 }
 
 function ensureDefaults(profile: CiProfile) {
-  if (!profile.timeLayouts.length) profile.timeLayouts.push(readTimeLayout(uuid(), { name: "默认时间表", layouts: standardLayoutItems() }));
+  if (!profile.timeLayouts.length) profile.timeLayouts.push(readTimeLayout(DEFAULT_TIME_LAYOUT_ID, { name: "默认时间表", layouts: standardLayoutItems() }));
   if (!profile.classPlanGroups.some((group) => group.id === DEFAULT_CLASS_PLAN_GROUP_ID))
     profile.classPlanGroups.push({ id: DEFAULT_CLASS_PLAN_GROUP_ID, name: "默认", isGlobal: false, extra: {} });
   if (!profile.classPlanGroups.some((group) => group.id === GLOBAL_CLASS_PLAN_GROUP_ID))
@@ -261,6 +264,45 @@ export function emptyProfile(name = "新档案"): CiProfile {
     extra: {},
   };
   ensureDefaults(profile);
+  return profile;
+}
+
+/**
+ * ClassIsland 新建档案时预置的默认科目，照抄宿主 Assets/default-subjects.json：
+ * 连 id 与简称一起沿用，集控台新建的课表与宿主默认档案对得上（通用技术的简称是“技”，不是首字）。
+ */
+const DEFAULT_SUBJECTS: [id: string, name: string, initial: string, isOutDoor: boolean][] = [
+  ["97d0bf3f-137f-4f8a-87d6-ff387063bbd3", "语文", "语", false],
+  ["1154d452-5ede-4194-b4dd-cb40c956c8ed", "数学", "数", false],
+  ["3bbed0c0-bcf3-4dfe-a78d-5da9b02cf8bd", "英语", "英", false],
+  ["44ec22d3-3dde-40e6-8eb7-a1f4cd378a04", "历史", "历", false],
+  ["9f0d71b7-b4da-4040-a3d5-64da7573c6dd", "政治", "政", false],
+  ["a4a76e77-29d8-4103-882c-2f4c9d1e8077", "物理", "物", false],
+  ["d18e9906-0210-4f00-9dd6-b919f0dd8287", "化学", "化", false],
+  ["a41cc849-b4bc-4dfd-a464-7f4fa3e317ca", "生物", "生", false],
+  ["7b7aea95-30ad-4490-8d98-0c9179c47a10", "地理", "地", false],
+  ["66d1c380-d292-46e1-86d5-d403e2a4f200", "信息技术", "信", true],
+  ["0ed2307b-4d9b-48fa-97ed-94bd2213c84e", "体育", "体", true],
+  ["923f4a8b-51eb-468b-971d-bb02e7db0163", "自习", "自", false],
+  ["0d412099-dac6-4616-b6a7-c4fb76b12063", "通用技术", "技", false],
+  ["91a88ebb-8ecb-493e-b09c-e35718f01dce", "音乐", "音", false],
+  ["742b00dc-901b-496f-ae33-6714a13fa465", "美术", "美", false],
+  ["353c420e-c256-4e28-9f9c-283333ba6e62", "选修课", "选", false],
+  ["cc826063-bdb7-492b-baf3-3c6877e8c4bf", "社团", "社", false],
+  ["31380edc-400d-46c2-b993-a5c4a43db126", "心理", "心", false],
+  ["9875b24c-470d-4195-8a6a-73925ea4808b", "早读", "早", false],
+  ["cf251cd8-2aab-4aa1-8211-50f4e6919a3d", "班会", "班", false],
+  ["95dd61cd-5d2e-4f23-80e8-99be8aa97028", "周测", "测", false],
+];
+
+export function defaultSubjects(): CiSubject[] {
+  return DEFAULT_SUBJECTS.map(([id, name, initial, isOutDoor]) => ({ id, name, initial, teacherName: "", isOutDoor, extra: {} }));
+}
+
+/** 新建课表的起点：空白时间表与课表 + 宿主的默认科目。只在建新时用它，读档时不补，否则删光的科目会复活。 */
+export function starterProfile(name = "新档案"): CiProfile {
+  const profile = emptyProfile(name);
+  profile.subjects = defaultSubjects();
   return profile;
 }
 

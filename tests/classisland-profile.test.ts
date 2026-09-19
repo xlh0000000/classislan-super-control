@@ -7,6 +7,7 @@ import {
   findClassPlan,
   periodsOf,
   readProfile,
+  starterProfile,
   toClock,
   toTimeSpan,
   writeProfileDocument,
@@ -62,7 +63,8 @@ describe("classisland profile model", () => {
     expect(profile.name).toBe("示例学校档案");
     expect(profile.timeLayouts).toHaveLength(1);
     expect(profile.timeLayouts[0]?.name).toBe("夏季作息");
-    expect(profile.subjects.map((subject) => subject.name)).toEqual(["数学", "语文"]);
+    // 读档保序：科目按档案里的书写顺序排队，不按名称重排。
+    expect(profile.subjects.map((subject) => subject.name)).toEqual(["语文", "数学"]);
     const plan = findClassPlan(profile, DEFAULT_CLASS_PLAN_GROUP_ID, 1);
     expect(plan?.name).toBe("周一");
     expect(plan?.classes.map((info) => info.subjectId)).toEqual([SUBJECT_LANGUAGE, SUBJECT_MATH]);
@@ -110,6 +112,32 @@ describe("classisland profile model", () => {
     expect(profile.classPlanGroups.some((group) => group.id === GLOBAL_CLASS_PLAN_GROUP_ID)).toBe(true);
     expect(profile.timeLayouts).toHaveLength(1);
     expect(periodsOf(profile, profile.timeLayouts[0]!.id).length).toBeGreaterThan(0);
+  });
+
+  it("seeds a brand-new timetable with ClassIsland's default subjects", () => {
+    const profile = starterProfile("新学期档案");
+    expect(profile.subjects.map((subject) => subject.name)).toEqual([
+      "语文", "数学", "英语", "历史", "政治", "物理", "化学", "生物", "地理", "信息技术",
+      "体育", "自习", "通用技术", "音乐", "美术", "选修课", "社团", "心理", "早读", "班会", "周测",
+    ]);
+    // 简称照抄宿主：通用技术取“技”而非首字，户外只有信息技术与体育。
+    expect(profile.subjects.find((subject) => subject.name === "通用技术")?.initial).toBe("技");
+    expect(profile.subjects.filter((subject) => subject.isOutDoor).map((subject) => subject.name)).toEqual(["信息技术", "体育"]);
+    // 连 id 都对齐宿主 default-subjects.json，集控台新建的那份与宿主默认档案是同一批科目。
+    expect(profile.subjects[0]?.id).toBe("97d0bf3f-137f-4f8a-87d6-ff387063bbd3");
+  });
+
+  it("keeps the subject order across a save/load round trip", () => {
+    // 科目墙的数字快捷键按位置取课，存盘再读回来不能把顺序重排成拼音序。
+    const reloaded = readProfile(writeProfileDocument(starterProfile()));
+    expect(reloaded.subjects.map((subject) => subject.name).slice(0, 3)).toEqual(["语文", "数学", "英语"]);
+  });
+
+  it("does not resurrect subjects deleted from a saved timetable", () => {
+    const emptied = starterProfile();
+    emptied.subjects = [];
+    expect(readProfile(writeProfileDocument(emptied)).subjects).toEqual([]);
+    expect(readProfile({}).subjects).toEqual([]);
   });
 
   it("normalizes clock strings both ways", () => {

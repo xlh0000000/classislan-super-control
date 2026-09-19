@@ -3,13 +3,13 @@ import {
   DEFAULT_CLASS_PLAN_GROUP_ID,
   TIME_TYPES,
   WEEKDAYS,
-  emptyProfile,
   ensureClassPlan,
   findClassPlan,
   newSubject,
   periodsOf,
   readProfile,
   standardLayoutItems,
+  starterProfile,
   subjectName,
   uuid,
   writeProfileDocument,
@@ -21,24 +21,14 @@ import { resolveSubjectShortcut } from "#shared/subject-shortcut";
 
 useHead({ title: "课表" });
 
-type ConfigRow = { configurationId: string; kind: string; name: string; revision: number; createdAt: string };
+type ConfigRow = { configurationId: string; kind: string; name: string; currentRevision: number | null };
 
 const { data: configs, refresh } = await useFetch<ConfigRow[]>("/api/v1/admin/configurations", { default: () => [] });
 const profileConfigs = computed(() => configs.value.filter((item) => item.kind === "profile"));
+const route = useRoute();
 
-/**
- * SSR 与首帧必须渲染同一份占位档案：emptyProfile() 生成的随机时间表 id
- * 会在服务端与客户端不一致，触发 hydration mismatch。
- */
-const PLACEHOLDER_LAYOUT_ID = "00000000-0000-4000-8000-00000000f001";
-function placeholderProfile(): CiProfile {
-  const value = emptyProfile();
-  const layout = value.timeLayouts[0];
-  if (layout) layout.id = PLACEHOLDER_LAYOUT_ID;
-  return value;
-}
-
-const profile = ref<CiProfile>(placeholderProfile());
+/** 首帧占位档案：默认时间表用固定 id，服务端与客户端渲染出同一份。 */
+const profile = ref<CiProfile>(starterProfile("新档案"));
 const activeId = ref<string | null>(null);
 const profileName = ref("新档案");
 const dirty = ref(false);
@@ -88,23 +78,43 @@ function resetSelection() {
   activeLayoutId.value = profile.value.timeLayouts[0]?.id ?? "";
 }
 
+/** 把某份配置的当前修订套进编辑器：首屏载入和下拉切换共用。 */
+function applyHistory(id: string, history: { documentJson: string }[] | null | undefined) {
+  profile.value = readProfile(JSON.parse(history?.[0]?.documentJson ?? "{}") as unknown);
+  activeId.value = id;
+  profileName.value = configs.value.find((item) => item.configurationId === id)?.name ?? profile.value.name;
+  resetSelection();
+  dirty.value = false;
+}
+
 async function loadConfig(id: string) {
   if (!id) return;
   loading.value = true;
   try {
-    const history = await $fetch<{ documentJson: string }[]>(`/api/v1/admin/configurations/${id}/history`);
-    profile.value = readProfile(JSON.parse(history[0]?.documentJson ?? "{}") as unknown);
-    activeId.value = id;
-    profileName.value = configs.value.find((item) => item.configurationId === id)?.name ?? profile.value.name;
-    resetSelection();
-    dirty.value = false;
+    applyHistory(id, await $fetch<{ documentJson: string }[]>(`/api/v1/admin/configurations/${id}/history`));
     toast.ok("已载入该配置的当前修订。");
   } catch (err) { toast.err(fail(err, "载入配置失败。")); }
   finally { loading.value = false; }
 }
 
+/**
+ * 课表页只编辑课表列表挑定的那一份：?config=<id> 就在首屏前读好它的当前修订；
+ * 没带（或那份已被删）就退回列表自己挑，绝不替用户默认摊开某张课表。
+ * 放在 setup 末尾执行：载入会走 resetSelection，碰到的是后面才声明的响应式状态。
+ */
+async function applyInitialConfig() {
+  const initialId = String(route.query.config ?? "");
+  if (!profileConfigs.value.some((item) => item.configurationId === initialId)) {
+    if (import.meta.client && initialId) toast.err("找不到这份课表，可能已经被删掉了。");
+    await navigateTo("/configurations/profile", { replace: true });
+    return;
+  }
+  const { data } = await useFetch<{ documentJson: string }[]>(`/api/v1/admin/configurations/${initialId}/history`, { key: "timetable-initial" });
+  applyHistory(initialId, data.value);
+}
+
 function createBlank() {
-  profile.value = emptyProfile("新档案");
+  profile.value = starterProfile("新档案");
   activeId.value = null;
   profileName.value = "新档案";
   resetSelection();
@@ -890,21 +900,16 @@ function syncGroupLayout() {
   toast.ok("已把当前时间表套用到本周课表。");
 }
 
-onMounted(async () => {
+onMounted(() => {
   autoNext.value = localStorage.getItem("classisland-control-timetable-auto-next") !== "0";
   const [savedClass, savedBreak] = (localStorage.getItem("classisland-control-timetable-point-minutes") ?? "").split(",").map(Number);
   if (savedClass && Number.isFinite(savedClass) && savedBreak && Number.isFinite(savedBreak)) {
     defaultClassMinutes.value = savedClass;
     defaultBreakMinutes.value = savedBreak;
   }
-  const route = useRoute();
-  // 配置库的「可视化编辑」用 ?config=<id> 深链进来，优先载入指定修订。
-  const requested = String(route.query.config ?? "");
-  if (requested && profileConfigs.value.some((item) => item.configurationId === requested)) await loadConfig(requested);
-  else if (profileConfigs.value[0]) await loadConfig(profileConfigs.value[0].configurationId);
-  // 楼栋页「发布课表」深链：载入档案后直接展开下发面板。
-  if (route.query.publish && activeId.value) showDeploy.value = true;
 });
+
+await applyInitialConfig();
 </script>
 
 <template>
@@ -921,7 +926,7 @@ onMounted(async () => {
     v-if="showDeploy && activeId"
     :configuration-id="activeId"
     :configuration-name="profileName"
-    :revision="profileConfigs.find(item => item.configurationId === activeId)?.revision"
+    :revision="profileConfigs.find(item => item.configurationId === activeId)?.currentRevision ?? undefined"
     @deployed="onDeployed"
     @close="showDeploy = false"
   />
@@ -935,11 +940,11 @@ onMounted(async () => {
     @close="showQuick = false"
   />
 
-  <section class="toolbar">
+  <section class="toolbar profile-bar">
     <label>档案配置
       <select :value="activeId ?? ''" @change="loadConfig(($event.target as HTMLSelectElement).value)">
         <option value="">（未保存的新档案）</option>
-        <option v-for="item in profileConfigs" :key="item.configurationId" :value="item.configurationId">{{ item.name }} · 第 {{ item.revision }} 版</option>
+        <option v-for="item in profileConfigs" :key="item.configurationId" :value="item.configurationId">{{ item.name }} · {{ revisionLabel(item.currentRevision) }}</option>
       </select>
     </label>
     <label>档案名称<input v-model="profileName" @input="markDirty"></label>
@@ -950,7 +955,7 @@ onMounted(async () => {
   <PageTabs v-model="tab" :items="tabs" />
 
   <section v-if="tab === 'timetable'">
-    <header class="panel-head">
+    <header class="panel-head toolbar">
       <label>课表群<select v-model="activeGroupId" @change="markDirty"><option v-for="group in profile.classPlanGroups" :key="group.id" :value="group.id">{{ group.name }}</option></select></label>
       <label>基准时间表<select v-model="baseLayoutId"><option v-for="layout in profile.timeLayouts" :key="layout.id" :value="layout.id">{{ layout.name }}</option></select></label>
       <button type="button" @click="addGroup">新增课表群</button>
@@ -1019,7 +1024,7 @@ onMounted(async () => {
   </section>
 
   <section v-else>
-    <header class="panel-head">
+    <header class="panel-head toolbar">
       <label>编辑时间表<select v-model="baseLayoutId"><option v-for="layout in profile.timeLayouts" :key="layout.id" :value="layout.id">{{ layout.name }}</option></select></label>
       <button type="button" @click="addLayout">新增时间表</button>
       <button type="button" @click="duplicateLayout">复制时间表</button>
@@ -1028,7 +1033,7 @@ onMounted(async () => {
     </header>
     <template v-if="activeLayout">
       <label class="layout-name">时间表名称<input v-model="activeLayout.name" maxlength="40" @input="markDirty"></label>
-      <div class="point-tools">
+      <div class="point-tools toolbar">
         <div class="seg" aria-label="添加时间点">
           <button type="button" title="在选中时间点之后接一节课" @click="addPoint(0)">上课</button>
           <button type="button" title="在选中时间点之后接一段课间" @click="addPoint(1)">课间</button>
@@ -1130,14 +1135,11 @@ onMounted(async () => {
 </template>
 <style scoped>
 section { margin-top: 22px; }
-.toolbar { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 18px; margin-bottom: 22px; }
-.toolbar label { display: grid; gap: 8px; color: var(--ink-muted); font-size: 11px; letter-spacing: 0.6px; }
-.toolbar select { min-width: 220px; }
-.toolbar input { min-width: 200px; }
-.badge { padding: 6px 11px; border: 1px solid var(--line); color: var(--ink-muted); font-size: 10px; letter-spacing: 0.8px; }
+.profile-bar select { min-width: 220px; }
+.profile-bar input { min-width: 200px; }
+.badge { border: 1px solid var(--line); color: var(--ink-muted); font-size: 10px; letter-spacing: 0.8px; }
 .badge[data-dirty="true"] { border-color: var(--accent); color: var(--accent); }
-.panel-head { flex-wrap: wrap; padding-bottom: 18px; border-bottom: 1px solid var(--line-strong); margin-bottom: 22px; }
-.panel-head label { display: grid; gap: 8px; color: var(--ink-muted); font-size: 11px; letter-spacing: 0.6px; }
+.panel-head { padding-bottom: 18px; border-bottom: 1px solid var(--line-strong); }
 .panel-head h2 { margin: 0; }
 
 /* 课表网格：RhineLab 的发丝格线，节次表头用微标签。 */
@@ -1187,9 +1189,9 @@ section { margin-top: 22px; }
 .stat { margin: 14px 0 0; color: var(--ink-muted); font-size: 11px; letter-spacing: 0.6px; }
 
 /* 时间点编辑工具条：分组按钮（.seg 全局样式）+ 默认时长。 */
-.point-tools { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 18px; margin-top: 20px; }
+.point-tools { margin-top: 20px; margin-bottom: 0; }
 .point-length { display: flex; gap: 14px; margin-left: auto; }
-.point-length label { display: grid; gap: 6px; width: 132px; color: var(--ink-muted); font-size: 11px; letter-spacing: 0.6px; }
+.point-length label { display: grid; gap: 8px; width: 132px; color: var(--ink-muted); font-size: 11px; letter-spacing: 0.6px; }
 .point-length input { width: 100%; }
 
 /* 左侧时间轴画布 + 右侧检查器。 */

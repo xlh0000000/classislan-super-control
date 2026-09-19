@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { CONFIG_KIND_LABELS } from "#shared/classisland-config";
+import { starterProfile, writeProfileDocument } from "#shared/classisland-profile";
 import { configKindEntries, configKindEntry } from "#shared/configuration-kinds";
 
-type ConfigRow = { configurationId: string; kind: string; name: string; revision: number; createdAt: string };
+type ConfigRow = { configurationId: string; kind: string; name: string; currentRevision: number | null; revisionCreatedAt: string | null; updatedAt: string };
 type Revision = { id: string; revision: number; name: string; documentJson: string; documentHash: string; createdBy: string | null; createdAt: string };
 /** 传 kind 就是某一类型的专用页，不传就是配置库总览。 */
 const props = defineProps<{ kind?: string }>();
 const entry = computed(() => (props.kind ? configKindEntry(props.kind) : null));
 const title = computed(() => (props.kind ? kindLabel(props.kind) : "配置库"));
+/** 新建按钮跟着导航短名走，「新建档案与课表」这种念起来太累。 */
+const newLabel = computed(() => (entry.value ? entry.value.nav : "配置"));
 const { data, refresh } = await useFetch<ConfigRow[]>("/api/v1/admin/configurations", { default: () => [] });
 const rows = computed(() => (props.kind ? (data.value ?? []).filter((item) => item.kind === props.kind) : data.value ?? []));
 
@@ -27,9 +30,16 @@ const pendingRollback = ref<{ revision: number; name: string } | null>(null);
 const toast = useToast();
 
 function kindLabel(value: string) { return CONFIG_KIND_LABELS[value] ?? value; }
+function fmt(iso: string | null) { return iso ? new Date(iso).toLocaleString() : "—"; }
 function countOf(value: string) { return (data.value ?? []).filter((item) => item.kind === value).length; }
 function onDeployed() { void refresh(); }
 function onSaved() { void refresh(); }
+
+/** 课表的内容在课表页排，其余类型就地用可视化编辑器改。 */
+function edit(config: ConfigRow) {
+  if (config.kind === "profile") { void navigateTo(`/timetable?config=${config.configurationId}`); return; }
+  editTarget.value = config;
+}
 
 function openCreate() {
   form.name = ""; form.kind = props.kind ?? "profile"; form.document = "{}";
@@ -43,6 +53,8 @@ async function create() {
   let document: Record<string, unknown>;
   try { document = JSON.parse(form.document) as Record<string, unknown>; }
   catch { toast.err("导入的文件内容格式有误。"); return; }
+  // 课表新建就是一份起始档案：默认作息 + ClassIsland 那套默认科目，省得先空着手去补科目。
+  if (form.kind === "profile" && !Object.keys(document).length) document = writeProfileDocument(starterProfile(name));
   busy.value = true;
   try {
     const created = await $fetch<{ configurationId: string }>("/api/v1/admin/configurations", {
@@ -51,7 +63,9 @@ async function create() {
     showEditor.value = false;
     await refresh();
     const row = (data.value ?? []).find((item) => item.configurationId === created.configurationId);
-    editTarget.value = row ?? { configurationId: created.configurationId, kind: form.kind, name, revision: 1, createdAt: "" };
+    const createdRow = row ?? { configurationId: created.configurationId, kind: form.kind, name, currentRevision: 1, revisionCreatedAt: null, updatedAt: "" };
+    if (form.kind === "profile") await navigateTo(`/timetable?config=${createdRow.configurationId}`);
+    else editTarget.value = createdRow;
     toast.ok(`已创建「${name}」。`);
   } catch (err) {
     toast.err((err as { data?: { message?: string } })?.data?.message ?? "创建失败，检查一下内容结构。");
@@ -118,12 +132,11 @@ async function confirmRollback() {
 
 <template>
   <PageHeading :kicker="entry?.kicker ?? '四类配置都放这里'" :title="title">
-    <NuxtLink v-if="!entry" to="/timetable">课表页 <i class="arrow">→</i></NuxtLink>
-    <button type="button" class="solid" @click="openCreate">新建{{ entry ? title : "配置" }}</button>
+    <button type="button" class="solid" @click="openCreate">新建{{ newLabel }}</button>
   </PageHeading>
 
   <section v-if="!entry" class="kinds">
-    <NuxtLink v-for="(kind, index) in configKindEntries" :key="kind.id" class="kind rise" :style="{ '--i': index }" :to="kind.page">
+    <NuxtLink v-for="kind in configKindEntries" :key="kind.id" class="kind" :to="kind.page">
       <span class="micro">{{ kind.kicker }}</span>
       <strong>{{ kindLabel(kind.id) }}</strong>
       <span class="count">{{ countOf(kind.id) }} 个</span>
@@ -135,10 +148,11 @@ async function confirmRollback() {
     <article v-for="item in rows" :key="item.configurationId">
       <div class="row-main">
         <strong>{{ item.name }}</strong>
-        <small>{{ kindLabel(item.kind) }} · 第 {{ item.revision }} 版 · {{ item.createdAt }}</small>
+        <small>{{ kindLabel(item.kind) }} · {{ revisionLabel(item.currentRevision) }} · {{ fmt(item.revisionCreatedAt ?? item.updatedAt) }}</small>
       </div>
       <div class="row-actions">
-        <button type="button" @click="editTarget = item">编辑</button>
+        <button type="button" @click="edit(item)">编辑</button>
+        <button v-if="item.kind === 'profile'" type="button" @click="editTarget = item">档案设置</button>
         <button type="button" @click="open(item)">修订</button>
         <button type="button" @click="deployTarget = item">下发</button>
       </div>
@@ -146,7 +160,7 @@ async function confirmRollback() {
   </section>
   <EmptyState v-else :title="entry ? `还没有${title}` : '配置库是空的'">
     <template #action>
-      <button type="button" @click="openCreate">新建{{ entry ? title : "配置" }}</button>
+      <button type="button" @click="openCreate">新建{{ newLabel }}</button>
     </template>
   </EmptyState>
 
@@ -165,7 +179,7 @@ async function confirmRollback() {
   <AppDialog v-if="selected" :title="selected.name" kicker="修订历史" width="840px" @close="selected = null">
     <div v-if="loading" class="muted">加载中…</div>
     <template v-else>
-      <div class="diff-controls">
+      <div class="diff-controls toolbar">
         <label class="field"><span>起始修订</span><select v-model.number="fromRev"><option v-for="rev in revisions" :key="rev.id" :value="rev.revision">第 {{ rev.revision }} 版</option></select></label>
         <label class="field"><span>目标修订</span><select v-model.number="toRev"><option v-for="rev in revisions" :key="rev.id" :value="rev.revision">第 {{ rev.revision }} 版</option></select></label>
         <button type="button" @click="loadDiff">比较差异</button>
@@ -175,15 +189,15 @@ async function confirmRollback() {
         <li v-for="rev in revisions" :key="rev.id">
           <div class="row-main">
             <strong>第 {{ rev.revision }} 版 · {{ rev.name }}</strong>
-            <small>{{ rev.createdAt }} · {{ rev.documentHash.slice(0, 12) }}</small>
+            <small>{{ fmt(rev.createdAt) }} · {{ rev.documentHash.slice(0, 12) }}</small>
           </div>
           <div class="row-actions"><button type="button" @click="rollback(rev.revision)">回滚到这里</button></div>
         </li>
       </ul>
     </template>
   </AppDialog>
-  <VisualConfigEditor v-if="editTarget" :configuration-id="editTarget.configurationId" :kind="editTarget.kind" :name="editTarget.name" :revision="editTarget.revision" @saved="onSaved" @close="editTarget = null" />
-  <DeployTargets v-if="deployTarget" :configuration-id="deployTarget.configurationId" :configuration-name="deployTarget.name" :revision="deployTarget.revision" @deployed="onDeployed" @close="deployTarget = null" />
+  <VisualConfigEditor v-if="editTarget" :configuration-id="editTarget.configurationId" :kind="editTarget.kind" :name="editTarget.name" :revision="editTarget.currentRevision ?? undefined" @saved="onSaved" @close="editTarget = null" />
+  <DeployTargets v-if="deployTarget" :configuration-id="deployTarget.configurationId" :configuration-name="deployTarget.name" :revision="deployTarget.currentRevision ?? undefined" @deployed="onDeployed" @close="deployTarget = null" />
   <ConfirmDialog
     v-if="pendingRollback"
     :title="`回滚到第 ${pendingRollback.revision} 版`"
@@ -207,9 +221,8 @@ async function confirmRollback() {
 .editor .wide { grid-column: 1 / -1; }
 .editor input, .editor select { width: 100%; }
 
-.diff-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 14px; margin-bottom: 20px; }
+.diff-controls { margin-bottom: 20px; }
 .diff-controls .field { min-width: 130px; }
-.diff-controls button { min-height: var(--control-h); }
 .diff { max-height: 300px; overflow: auto; margin: 0 0 20px; padding: 16px 18px; border: 1px solid var(--line-soft); background: var(--surface-2); font-family: ui-monospace, monospace; font-size: 11px; line-height: 1.7; }
 .revisions { margin: 0; padding: 0; list-style: none; border-top-color: var(--line-strong); }
 @media (max-width: 760px) { .editor { grid-template-columns: 1fr; } }
