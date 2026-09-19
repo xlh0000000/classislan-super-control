@@ -17,7 +17,7 @@ export default defineEventHandler((event) => {
   return {
     initialized: initialized?.value === "true",
     database: "SQLite WAL",
-    version: "0.1.0",
+    version: "0.1.1",
     lastBackupAt: lastBackup?.value ?? null,
     backups,
   };

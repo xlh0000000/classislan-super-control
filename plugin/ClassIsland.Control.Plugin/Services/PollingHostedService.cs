@@ -148,7 +148,7 @@ public sealed class PollingHostedService(
                     state.DeviceId,
                     state.PendingPoll?.Sequence ?? state.Sequence + 1,
                     DateTime.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", System.Globalization.CultureInfo.InvariantCulture),
-                    "0.1.0",
+                    "0.1.1",
                     AppBase.AppVersion,
                     $"{AppBase.Current.OperatingSystem}/{AppBase.Current.Platform}",
                     digest,
@@ -356,7 +356,7 @@ public sealed class PollingHostedService(
     {
         if (string.IsNullOrWhiteSpace(store.Settings.EnrollmentToken)) throw new InvalidOperationException("Enrollment token is required.");
         var publicKeyJwk = await EnsureEnrollmentKeyAsync(store.State, cancellationToken);
-        var response = await client.EnrollAsync(new EnrollmentRequest(store.Settings.EnrollmentToken, store.Settings.DeviceName, publicKeyJwk, null, "0.1.0", AppBase.AppVersion, $"{AppBase.Current.OperatingSystem}/{AppBase.Current.Platform}"), cancellationToken);
+        var response = await client.EnrollAsync(new EnrollmentRequest(store.Settings.EnrollmentToken, store.Settings.DeviceName, publicKeyJwk, null, "0.1.1", AppBase.AppVersion, $"{AppBase.Current.OperatingSystem}/{AppBase.Current.Platform}"), cancellationToken);
         await store.SaveStateAsync(store.State with
         {
             DeviceId = response.DeviceId,

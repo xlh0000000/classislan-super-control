@@ -573,10 +573,10 @@ const autoTasks: Migration = {
 const teacherAccounts: Migration = {
   id: "0018-teacher-accounts",
   up(db) {
-    // 教师角色要拓宽 users 的内联 CHECK，SQLite 只能整表重建。重建会级联掉 sessions
-    // （或把外键检查推到提交时刻），因此先把会话原样备份，id 不变地搬回，
-    // 让升级对已登录会话透明；defer_foreign_keys 只在本事务内生效。
-    db.exec("PRAGMA defer_foreign_keys = ON");
+    // 教师角色要拓宽 users 的内联 CHECK，SQLite 只能整表重建。重建期间的
+    // DROP TABLE users 会为每张引用它的子表记下一笔外键违规，这笔账即使把父表
+    // 连同原样的行一起搬回来也销不掉——提交时照样报 FOREIGN KEY constraint failed。
+    // 所以整表重建依赖 migrate() 在迁移事务期间关闭外键强制，提交后再统一校验孤儿行。
     db.exec(`CREATE TABLE users_new (
       id TEXT PRIMARY KEY,
       username TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -590,11 +590,8 @@ const teacherAccounts: Migration = {
     ) STRICT`);
     db.exec(`INSERT INTO users_new (id,username,password_hash,display_name,role,created_at,disabled_at,scope_org_node_id,must_change_password)
       SELECT id,username,password_hash,display_name,role,created_at,disabled_at,scope_org_node_id,0 FROM users`);
-    db.exec("CREATE TABLE users_rebuild_sessions AS SELECT * FROM sessions");
     db.exec("DROP TABLE users");
     db.exec("ALTER TABLE users_new RENAME TO users");
-    db.exec("INSERT OR IGNORE INTO sessions SELECT * FROM users_rebuild_sessions");
-    db.exec("DROP TABLE users_rebuild_sessions");
     db.exec("CREATE INDEX IF NOT EXISTS idx_users_scope ON users(scope_org_node_id)");
     // 教师与设备多对多：一台设备可绑多位教师，解绑一个账号不能牵连他人。
     db.exec(`CREATE TABLE IF NOT EXISTS device_teachers (
@@ -626,32 +623,50 @@ export function schemaFingerprint(db: Database.Database) {
 
 export function migrate(db: Database.Database) {
   const known = new Set(migrations.map((migration) => migration.id));
-  // BEGIN IMMEDIATE 从一开始就取得写锁并覆盖全部准备与迁移步骤：
-  // 多进程同时启动时严格串行，且已应用集合在取得写锁之后才读取，
-  // 后手不会基于过期快照重复执行迁移（那会撞上 schema_migrations 主键而崩溃）。
-  db.transaction(() => {
-    db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
-      id TEXT PRIMARY KEY,
-      checksum TEXT NOT NULL DEFAULT '',
-      applied_at TEXT NOT NULL
-    ) STRICT`);
-    // 兼容早期只有 (id, applied_at) 的 schema_migrations。
-    addColumn(db, "schema_migrations", "checksum", "TEXT NOT NULL DEFAULT ''");
-    const applied = new Map(
-      (db.prepare("SELECT id, checksum FROM schema_migrations").all() as { id: string; checksum: string }[])
-        .map((row) => [row.id, row.checksum] as const),
-    );
-    // 数据库版本高于本程序能力：出现未知迁移时拒绝启动，避免旧二进制写入新 schema。
-    for (const id of applied.keys()) {
-      if (!known.has(id)) throw new Error(`数据库包含当前程序未知的迁移 ${id}，拒绝以旧版本启动以免损坏数据。`);
+  // 整表重建（DROP 父表）无法在开启外键强制的事务里提交，而 PRAGMA foreign_keys
+  // 在事务内是空操作，只能在外层切换。迁移期间不强制外键，提交后统一用
+  // foreign_key_check 验证没留下孤儿行——这也是 SQLite 官方推荐的重建步骤。
+  const enforceForeignKeys = db.pragma("foreign_keys", { simple: true }) === 1;
+  db.pragma("foreign_keys = OFF");
+  let appliedAny = false;
+  try {
+    // BEGIN IMMEDIATE 从一开始就取得写锁并覆盖全部准备与迁移步骤：
+    // 多进程同时启动时严格串行，且已应用集合在取得写锁之后才读取，
+    // 后手不会基于过期快照重复执行迁移（那会撞上 schema_migrations 主键而崩溃）。
+    db.transaction(() => {
+      db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
+        id TEXT PRIMARY KEY,
+        checksum TEXT NOT NULL DEFAULT '',
+        applied_at TEXT NOT NULL
+      ) STRICT`);
+      // 兼容早期只有 (id, applied_at) 的 schema_migrations。
+      addColumn(db, "schema_migrations", "checksum", "TEXT NOT NULL DEFAULT ''");
+      const applied = new Map(
+        (db.prepare("SELECT id, checksum FROM schema_migrations").all() as { id: string; checksum: string }[])
+          .map((row) => [row.id, row.checksum] as const),
+      );
+      // 数据库版本高于本程序能力：出现未知迁移时拒绝启动，避免旧二进制写入新 schema。
+      for (const id of applied.keys()) {
+        if (!known.has(id)) throw new Error(`数据库包含当前程序未知的迁移 ${id}，拒绝以旧版本启动以免损坏数据。`);
+      }
+      for (const migration of migrations) {
+        if (applied.has(migration.id)) continue;
+        migration.up(db);
+        appliedAny = true;
+        db.prepare("INSERT INTO schema_migrations (id,checksum,applied_at) VALUES (?,?,?)")
+          .run(migration.id, schemaFingerprint(db), new Date().toISOString());
+      }
+    }).immediate();
+  } finally {
+    if (enforceForeignKeys) db.pragma("foreign_keys = ON");
+  }
+  if (appliedAny) {
+    const orphans = db.prepare("PRAGMA foreign_key_check").all() as { table: string; rowid: number; parent: string }[];
+    if (orphans.length) {
+      const where = [...new Set(orphans.map((row) => `${row.table}→${row.parent}`))].join("、");
+      throw new Error(`迁移后检出 ${orphans.length} 条悬空外键（${where}），schema 已升级但数据一致性未通过校验，拒绝启动以免继续写坏。`);
     }
-    for (const migration of migrations) {
-      if (applied.has(migration.id)) continue;
-      migration.up(db);
-      db.prepare("INSERT INTO schema_migrations (id,checksum,applied_at) VALUES (?,?,?)")
-        .run(migration.id, schemaFingerprint(db), new Date().toISOString());
-    }
-  }).immediate();
+  }
   // 校验最终 schema 与最后一次迁移记录的指纹一致，检测外部手工改动。
   const recorded = db.prepare("SELECT checksum FROM schema_migrations ORDER BY id DESC LIMIT 1").get() as { checksum: string } | undefined;
   if (recorded?.checksum) {

@@ -19,7 +19,7 @@ public sealed class CrashReporter
     /// <summary>单轮上报条数上限，与服务端 poll schema 的 .max(20) 对齐。</summary>
     private const int BatchLimit = 20;
     private const int MaxStackTrace = 8000;
-    private const string PluginVersion = "0.1.0";
+    private const string PluginVersion = "0.1.1";
 
     private static readonly JsonSerializerOptions JsonOptions =
         new(JsonSerializerDefaults.Web) { WriteIndented = true };

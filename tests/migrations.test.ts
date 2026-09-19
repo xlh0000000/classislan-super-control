@@ -39,10 +39,15 @@ describe("schema migrations", () => {
     const db = createDbBehindBy(migrations.length - 1);
     db.prepare("INSERT INTO users (id,username,password_hash,display_name,role,created_at) VALUES (?,?,?,?,?,?)")
       .run("u1", "teacher1", "x", "王老师", "viewer", "2026-09-11T00:00:00.000Z");
+    db.prepare("INSERT INTO org_nodes (id,parent_id,name,path,sort_order,created_at) VALUES (?,?,?,?,?,?)")
+      .run("o1", null, "本部", "本部", 0, "2026-09-11T00:00:00.000Z");
     db.prepare("INSERT INTO devices (id,name,public_key_jwk,key_thumbprint,created_at) VALUES (?,?,?,?,?)")
       .run("d1", "教室机", "{}", "fp1", "2026-09-11T00:00:00.000Z");
     db.prepare("INSERT INTO sessions (id,user_id,token_hash,expires_at,created_at,last_seen_at) VALUES (?,?,?,?,?,?)")
       .run("s1", "u1", "h1", "2099-01-01T00:00:00.000Z", "2026-09-11T00:00:00.000Z", "2026-09-11T00:00:00.000Z");
+    // 无级联动作的子表（DROP 父表时只能记下一笔违规）才是真实故障现场：只留 sessions 测不出来。
+    db.prepare("INSERT INTO enrollment_tokens (id,token_hash,kind,org_node_id,expires_at,created_by,created_at) VALUES (?,?,?,?,?,?,?)")
+      .run("e1", "th1", "code", "o1", "2099-01-01T00:00:00.000Z", "u1", "2026-09-11T00:00:00.000Z");
     // 旧 CHECK 必须先拒绝 teacher，否则说明断言跑在了错误的 schema 上。
     expect(() => db.prepare("UPDATE users SET role='teacher' WHERE id='u1'").run()).toThrow(/CHECK constraint/i);
 
@@ -50,6 +55,8 @@ describe("schema migrations", () => {
 
     expect((db.prepare("SELECT role FROM users WHERE id='u1'").get() as { role: string }).role).toBe("viewer");
     expect(db.prepare("SELECT 1 FROM sessions WHERE id='s1'").get()).toBeTruthy();
+    expect((db.prepare("SELECT created_by FROM enrollment_tokens WHERE id='e1'").get() as { created_by: string }).created_by).toBe("u1");
+    expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
     db.prepare("UPDATE users SET role='teacher', must_change_password=1 WHERE id='u1'").run();
     db.prepare("INSERT INTO device_teachers (device_id,user_id,bound_by,created_at) VALUES (?,?,?,?)")
       .run("d1", "u1", "admin", "2026-09-11T00:00:00.000Z");
@@ -61,6 +68,9 @@ describe("schema migrations", () => {
       .run("d2", "办公室机", "{}", "fp2", "2026-09-11T00:00:00.000Z");
     db.prepare("INSERT INTO device_teachers (device_id,user_id,bound_by,created_at) VALUES (?,?,?,?)")
       .run("d2", "u1", "qr", "2026-09-11T00:00:00.000Z");
+    // 重建后外键依旧把关：还有接入令牌挂在用户名下时删不掉该用户。
+    expect(() => db.prepare("DELETE FROM users WHERE id='u1'").run()).toThrow(/FOREIGN KEY constraint failed/);
+    db.prepare("DELETE FROM enrollment_tokens WHERE id='e1'").run();
     db.prepare("DELETE FROM users WHERE id='u1'").run();
     expect((db.prepare("SELECT COUNT(*) n FROM device_teachers").get() as { n: number }).n).toBe(0);
     db.close();

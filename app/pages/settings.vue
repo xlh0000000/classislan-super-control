@@ -2,7 +2,7 @@
 type BackupRow = { name: string; ok: boolean; createdAt: string | null; sizeBytes: number };
 type SystemData = { initialized: boolean; database: string; version: string; lastBackupAt: string | null; backups: BackupRow[] };
 const { data, refresh } = await useFetch<SystemData>("/api/v1/admin/system", {
-  default: () => ({ initialized: false, database: "SQLite WAL", version: "0.1.0", lastBackupAt: null, backups: [] }),
+  default: () => ({ initialized: false, database: "SQLite WAL", version: "—", lastBackupAt: null, backups: [] }),
 });
 const busy = ref(false); const toast = useToast();
 function formatSize(bytes: number) { return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`; }

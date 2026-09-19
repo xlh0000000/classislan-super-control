@@ -143,18 +143,22 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           path: artifacts
-      - name: 校对插件版本
+      - name: 校对版本一致性
         run: |
           manifest=$(sed -n 's/^version:[[:space:]]*//p' plugin/ClassIsland.Control.Plugin/manifest.yml | tr -d '\r' | head -n1)
           pkg=$(node -p "require('./package.json').version")
+          shown=$(sed -n 's/.*version: "\([^"]*\)".*/\1/p' server/api/v1/admin/system.get.ts | head -n1)
           tag="${GITHUB_REF_NAME#v}"
           norm() { local IFS=.; read -r a b c d <<< "$1"; echo "${a:-0}.${b:-0}.${c:-0}.${d:-0}"; }
-          echo "插件清单版本 $manifest / 服务端版本 $pkg / 标签 $GITHUB_REF_NAME"
+          echo "插件清单版本 $manifest / 服务端版本 $pkg / 系统页版本 $shown / 标签 $GITHUB_REF_NAME"
           if [ "$(norm "$manifest")" != "$(norm "$tag")" ]; then
             echo "::warning::标签 $GITHUB_REF_NAME 与 plugin/ClassIsland.Control.Plugin/manifest.yml 的 $manifest 不一致"
           fi
           if [ "$(norm "$pkg")" != "$(norm "$tag")" ]; then
             echo "::warning::标签 $GITHUB_REF_NAME 与 package.json 的 $pkg 不一致"
+          fi
+          if [ "$(norm "$shown")" != "$(norm "$tag")" ]; then
+            echo "::warning::标签 $GITHUB_REF_NAME 与 server/api/v1/admin/system.get.ts 展示给管理员的 $shown 不一致"
           fi
       - name: 整理产物
         run: |
