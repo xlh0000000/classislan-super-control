@@ -13,7 +13,7 @@ const props = withDefaults(defineProps<{
   selectedIds: string[];
   selectable?: boolean;
 }>(), { selectable: true });
-const emit = defineEmits<{ toggle: [ids: string[]]; openRoom: [id: string]; inspect: [id: string]; changed: [] }>();
+const emit = defineEmits<{ toggle: [ids: string[]]; marquee: [ids: string[], additive: boolean]; openRoom: [id: string]; inspect: [id: string]; changed: [] }>();
 const toast = useToast();
 const { can } = useSession();
 /** 楼栋结构增删改走的是 devices.write，没这条权限的账号点了只会拿到 403。 */
@@ -129,10 +129,111 @@ async function confirmDelete() {
   }
   pendingDelete.value = null;
 }
+
+/* —— 框选：空白处拖出选择框，与教室卡片相交即整间选中；拖到视口上下沿时页面跟随滚动 —— */
+const BAND_EDGE = 44;
+const boardEl = ref<HTMLElement | null>(null);
+const band = ref<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+const bandHits = ref<string[]>([]);
+const viewScroll = ref({ x: 0, y: 0 });
+let bandPointerId: number | null = null;
+let bandTimer: ReturnType<typeof setTimeout> | null = null;
+
+function syncScroll() { viewScroll.value = { x: window.scrollX, y: window.scrollY }; }
+function stopBandLoop() {
+  if (bandTimer) clearTimeout(bandTimer);
+  bandTimer = null;
+}
+/** 框的角点存文档坐标，滚动时起点跟着内容走，绘制再折算回视口。 */
+function bandBox() {
+  const b = band.value;
+  if (!b) return null;
+  const left = Math.min(b.x0, b.x1) - viewScroll.value.x;
+  const top = Math.min(b.y0, b.y1) - viewScroll.value.y;
+  return { left, top, right: left + Math.abs(b.x1 - b.x0), bottom: top + Math.abs(b.y1 - b.y0) };
+}
+const bandStyle = computed(() => {
+  const box = bandBox();
+  if (!box) return {};
+  return { left: `${box.left}px`, top: `${box.top}px`, width: `${box.right - box.left}px`, height: `${box.bottom - box.top}px` };
+});
+
+function updateBandHits() {
+  const box = bandBox();
+  if (!box) { bandHits.value = []; return; }
+  const hits: string[] = [];
+  const cards = boardEl.value?.querySelectorAll<HTMLElement>(".room-wrap[data-room]") ?? [];
+  for (const el of Array.from(cards)) {
+    const rect = el.getBoundingClientRect();
+    if (rect.right > box.left && rect.left < box.right && rect.bottom > box.top && rect.top < box.bottom)
+      hits.push(el.dataset.room!);
+  }
+  bandHits.value = hits;
+}
+
+function bandTick() {
+  bandTimer = null;
+  const b = band.value;
+  if (!b) return;
+  const y = b.y1 - viewScroll.value.y;
+  let delta = 0;
+  if (y < BAND_EDGE) delta = -Math.min(16, (BAND_EDGE - y) / 2);
+  else if (y > window.innerHeight - BAND_EDGE) delta = Math.min(16, (y - (window.innerHeight - BAND_EDGE)) / 2);
+  if (delta) {
+    window.scrollBy(0, delta);
+    syncScroll();
+    // 指针没动但页面在动：命中要照新位置重算。
+    updateBandHits();
+  }
+  bandTimer = setTimeout(bandTick, 16);
+}
+
+function onBandDown(event: PointerEvent) {
+  if (!props.selectable || event.button !== 0 || event.pointerType !== "mouse") return;
+  // 卡片与控件上的那一下归单击和结构编辑管，框选只从空白处起手。
+  if ((event.target as HTMLElement).closest("button, a, input, label, select, textarea, .room")) return;
+  syncScroll();
+  const x = event.clientX + viewScroll.value.x;
+  const y = event.clientY + viewScroll.value.y;
+  band.value = { x0: x, y0: y, x1: x, y1: y };
+  bandPointerId = event.pointerId;
+  (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+  event.preventDefault();
+  updateBandHits();
+  bandTimer = setTimeout(bandTick, 16);
+}
+function onBandMove(event: PointerEvent) {
+  if (!band.value || event.pointerId !== bandPointerId) return;
+  syncScroll();
+  band.value = { ...band.value, x1: event.clientX + viewScroll.value.x, y1: event.clientY + viewScroll.value.y };
+  updateBandHits();
+}
+function onBandUp(event: PointerEvent) {
+  if (!band.value || event.pointerId !== bandPointerId) return;
+  const b = band.value;
+  const hits = bandHits.value;
+  stopBandLoop();
+  band.value = null;
+  bandPointerId = null;
+  bandHits.value = [];
+  // 起终点几乎重合的那一下还是单击，别把已有选择清掉。
+  if (Math.abs(b.x1 - b.x0) < 4 && Math.abs(b.y1 - b.y0) < 4) return;
+  const rooms = new Set(hits);
+  const ids = [...new Set(props.rooms.filter((room) => rooms.has(room.id)).flatMap((room) => room.deviceIds))];
+  emit("marquee", ids, event.shiftKey);
+}
+function onBandCancel(event: PointerEvent) {
+  if (event.pointerId !== bandPointerId) return;
+  stopBandLoop();
+  band.value = null;
+  bandPointerId = null;
+  bandHits.value = [];
+}
+onBeforeUnmount(stopBandLoop);
 </script>
 
 <template>
-  <section class="board">
+  <section ref="boardEl" class="board" @pointerdown="onBandDown" @pointermove="onBandMove" @pointerup="onBandUp" @pointercancel="onBandCancel">
     <header class="board-head">
       <div class="tabs">
         <template v-for="building in buildings" :key="building.id">
@@ -213,6 +314,8 @@ async function confirmDelete() {
             v-for="room in roomsOf(floor.id)"
             :key="room.id"
             class="room-wrap"
+            :data-room="room.id"
+            :data-hit="bandHits.includes(room.id)"
             :data-selected="allSelected(room.deviceIds)"
             :data-partial="someSelected(room.deviceIds)"
           >
@@ -306,6 +409,10 @@ async function confirmDelete() {
       <p v-if="!floors.length" class="floor-hint">{{ canEdit ? "该楼栋还没有楼层，点「＋ 楼层」添加。" : "该楼栋还没有楼层。" }}</p>
     </div>
 
+    <Teleport to="body">
+      <div v-if="band" class="board-band" :style="bandStyle" />
+    </Teleport>
+
     <ConfirmDialog
       v-if="pendingDelete"
       :title="`删除${kindLabel(pendingDelete.kind)}`"
@@ -379,6 +486,16 @@ async function confirmDelete() {
 .room-wrap[data-selected="true"] .room small { color: var(--fill-ink); }
 .room-wrap[data-selected="true"] .room-open:hover .room-name { color: var(--fill-ink); }
 .room-wrap[data-partial="true"] .room { border-color: var(--warning); }
+/* 框选中的教室先亮一下，松手后才换成选中的深橄榄底。 */
+.room-wrap[data-hit="true"] .room { border-color: var(--accent); background: var(--accent-wash); }
+.board-band {
+  position: fixed;
+  z-index: 30;
+  border: 1px solid var(--accent);
+  background: var(--accent-wash);
+  opacity: 0.55;
+  pointer-events: none;
+}
 .pick { position: absolute; top: 12px; right: 12px; z-index: 1; display: flex; padding: 0; background: transparent; }
 .pick input { width: 18px; height: 18px; }
 .room-devices { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; min-height: 12px; }

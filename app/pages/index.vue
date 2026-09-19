@@ -40,6 +40,12 @@ function toggleDevices(ids: string[]) {
   selection.value = { ...selection.value, deviceIds: next };
 }
 
+/** 框选给的是一组确定的设备：不叠 Shift 就整组换掉手选清单，组织与标签那两层范围不动。 */
+function marqueeDevices(ids: string[], additive: boolean) {
+  const current = selection.value.deviceIds;
+  selection.value = { ...selection.value, deviceIds: additive ? [...new Set([...current, ...ids])] : ids };
+}
+
 function openRoom(id: string) { roomId.value = id; }
 /** 单击设备看设备详情（内含生效策略明细入口）；先关掉教室弹窗，避免叠层。 */
 function inspect(id: string) { roomId.value = null; inspectId.value = id; }
@@ -53,7 +59,7 @@ async function changed() { await refresh(); }
       <button type="button" class="solid" @click="showTargets = true">选择目标</button>
       <template v-if="!empty">
         <NuxtLink v-if="can('policies.write')" class="ghost" to="/policies?new=1">发布策略</NuxtLink>
-        <NuxtLink v-if="can('configurations.write')" class="ghost" to="/timetable?publish=1">发布课表</NuxtLink>
+        <NuxtLink v-if="can('configurations.write')" class="ghost" to="/configurations/profile">发布课表</NuxtLink>
         <NuxtLink v-if="can('configurations.write')" class="ghost" to="/configurations">下发配置</NuxtLink>
         <NuxtLink v-if="can('tasks.write')" class="ghost" to="/tasks?new=1">发布任务</NuxtLink>
         <button type="button" class="ghost" @click="clear">清空选择</button>
@@ -69,6 +75,7 @@ async function changed() { await refresh(); }
     :selected-ids="selection.deviceIds"
     :selectable="canPublish"
     @toggle="toggleDevices"
+    @marquee="marqueeDevices"
     @open-room="openRoom"
     @inspect="inspect"
     @changed="changed"
@@ -90,6 +97,6 @@ async function changed() { await refresh(); }
 </template>
 
 <style scoped>
-.picked { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
-.count { margin-right: 8px; color: var(--ink-muted); font-size: 11px; letter-spacing: 0.8px; font-variant-numeric: tabular-nums; }
+.picked { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.count { color: var(--ink-muted); font-size: 11px; letter-spacing: 0.8px; font-variant-numeric: tabular-nums; }
 </style>
