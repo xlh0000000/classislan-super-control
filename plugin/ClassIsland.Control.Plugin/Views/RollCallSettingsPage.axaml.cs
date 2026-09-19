@@ -38,9 +38,10 @@ public partial class RollCallSettingsPage : SettingsPageBase
         WidthBox.Value = (decimal)settings.RollCallWidth;
         HeightBox.Value = (decimal)settings.RollCallHeight;
         OpacityBox.Value = (decimal)settings.RollCallOpacity;
-        SingleBox.Value = settings.RollCallSingleSeconds;
-        MultiBox.Value = settings.RollCallMultiSeconds;
-        NotifySwitch.IsChecked = settings.RollCallNotify;
+        // 时长与提醒都可能被集控端接管：展示生效值，被接管的那几项在 RenderRoster 里禁用。
+        SingleBox.Value = _service.EffectiveSingleSeconds;
+        MultiBox.Value = _service.EffectiveMultiSeconds;
+        NotifySwitch.IsChecked = _service.EffectiveNotify;
         EnableSwitch.IsChecked = _service.IsVisible;
         LocalNamesBox.Text = string.Join(Environment.NewLine, settings.RollCallLocalNames);
         _loading = false;
@@ -89,6 +90,12 @@ public partial class RollCallSettingsPage : SettingsPageBase
                 : "下发的名单为空";
             RosterSourceText.Text = "点名用的是集控端名单，本机名单已让位。";
         }
+        else if (_service.Roster.Snapshot.Revision > 0)
+        {
+            // 集控端在线但没给这台机器指派名单：本机名单继续管事，不能显示成“还没收到”。
+            RosterText.Text = "集控端未指派";
+            RosterSourceText.Text = "点名用的是下面这份本机名单。";
+        }
         else
         {
             // 还没收到集控端名单：本机名单就是点名用的那份。
@@ -100,8 +107,24 @@ public partial class RollCallSettingsPage : SettingsPageBase
         }
         if (_loading) return;
         _loading = true;
+        var server = _service.Roster.Settings;
         EnableSwitch.IsChecked = _service.IsVisible;
+        NotifySwitch.IsChecked = _service.EffectiveNotify;
+        SingleBox.Value = _service.EffectiveSingleSeconds;
+        MultiBox.Value = _service.EffectiveMultiSeconds;
         _loading = false;
+        SetServerControlled(EnableSwitch, EnableNote, server.Enabled is not null);
+        SetServerControlled(NotifySwitch, NotifyNote, server.Notify is not null);
+        SetServerControlled(SingleBox, SingleNote, server.SingleSeconds is not null);
+        SetServerControlled(MultiBox, MultiNote, server.MultiSeconds is not null);
+    }
+
+    /// <summary>被集控端接管的那一项置灰并标注来源，本机原值仍在设置文件里等接管撤销。</summary>
+    private static void SetServerControlled(Avalonia.Controls.Control control, Avalonia.Controls.TextBlock note, bool takenOver)
+    {
+        control.IsEnabled = !takenOver;
+        note.Text = "由集控端设定";
+        note.IsVisible = takenOver;
     }
 
     /// <summary>本机名字表：按行拆分、去空白、去重，保持用户填写的先后顺序。</summary>
@@ -136,15 +159,18 @@ public partial class RollCallSettingsPage : SettingsPageBase
     private async void OnChanged(object? sender, EventArgs e)
     {
         if (_loading) return;
-        var settings = _store.Settings with
+        // 被集控端接管的那几项只是镜像：本机原值照旧落盘，等接管撤销后自动回位。
+        var server = _service.Roster.Settings;
+        var local = _store.Settings;
+        var settings = local with
         {
-            RollCallEnabled = EnableSwitch.IsChecked == true,
-            RollCallNotify = NotifySwitch.IsChecked == true,
+            RollCallEnabled = server.Enabled ?? (EnableSwitch.IsChecked == true),
+            RollCallNotify = server.Notify ?? (NotifySwitch.IsChecked == true),
             RollCallWidth = (double)(WidthBox.Value ?? 260m),
             RollCallHeight = (double)(HeightBox.Value ?? 112m),
             RollCallOpacity = (double)(OpacityBox.Value ?? 0.8m),
-            RollCallSingleSeconds = (int)(SingleBox.Value ?? 6m),
-            RollCallMultiSeconds = (int)(MultiBox.Value ?? 10m),
+            RollCallSingleSeconds = server.SingleSeconds ?? (int)(SingleBox.Value ?? 6m),
+            RollCallMultiSeconds = server.MultiSeconds ?? (int)(MultiBox.Value ?? 10m),
         };
         try
         {
@@ -152,8 +178,7 @@ public partial class RollCallSettingsPage : SettingsPageBase
             await _store.SaveSettingsAsync(settings);
         }
         catch { /* 保存失败不影响本次预览；下次改动会重试。 */ }
-        if (settings.RollCallEnabled) _service.Show();
-        else _service.Hide();
+        _service.ApplyVisibility();
         _service.ReapplySettings();
     }
 

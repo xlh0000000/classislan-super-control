@@ -34,9 +34,16 @@ function createDbBehindBy(count: number) {
   return db;
 }
 
+// 按 id 停在某条迁移之前：用长度倒数的写法每加一条迁移就会把用例带偏。
+function createDbBefore(id: string) {
+  const index = migrations.findIndex((migration) => migration.id === id);
+  if (index < 0) throw new Error(`未知迁移 ${id}`);
+  return createDbBehindBy(index);
+}
+
 describe("schema migrations", () => {
   it("rebuilds users for the teacher role without losing rows or sessions", () => {
-    const db = createDbBehindBy(migrations.length - 1);
+    const db = createDbBefore("0018-teacher-accounts");
     db.prepare("INSERT INTO users (id,username,password_hash,display_name,role,created_at) VALUES (?,?,?,?,?,?)")
       .run("u1", "teacher1", "x", "王老师", "viewer", "2026-09-11T00:00:00.000Z");
     db.prepare("INSERT INTO org_nodes (id,parent_id,name,path,sort_order,created_at) VALUES (?,?,?,?,?,?)")
@@ -123,21 +130,16 @@ describe("schema migrations", () => {
   });
 
   it("upgrades an N-1 database in place, applying only the missing migration", () => {
-    const db = createDbBehindBy(migrations.length - 1);
+    const last = migrations.at(-1)!.id;
+    const db = createDbBefore(last);
     const before = migrationRows(db);
     expect(before.map((row) => row.id)).toEqual(migrations.slice(0, -1).map((migration) => migration.id));
-    // 只落后一条：倒数第二条迁移（自动任务）的效果已在，最后一条（教师账号）的还没有。
+    // 只落后最后一条：教师账号那批改动已在，缺的是新表。
     const columnsBefore = (db.prepare("PRAGMA table_info(devices)").all() as { name: string }[]).map((column) => column.name);
-    expect(columnsBefore).toContain("transport");
+    expect(columnsBefore).toContain("binding_code_hash");
+    expect(tableExists(db, "device_teachers")).toBe(true);
     expect(tableExists(db, "rollcall_rosters")).toBe(true);
-    expect(tableExists(db, "device_timetables")).toBe(true);
-    expect(tableExists(db, "crash_reports")).toBe(true);
-    expect(tableExists(db, "task_schedules")).toBe(true);
-    expect(tableExists(db, "triggers")).toBe(true);
-    expect(tableExists(db, "device_teachers")).toBe(false);
-    expect(columnsBefore).not.toContain("binding_code_hash");
-    const userColumnsBefore = (db.prepare("PRAGMA table_info(users)").all() as { name: string }[]).map((column) => column.name);
-    expect(userColumnsBefore).not.toContain("must_change_password");
+    expect(tableExists(db, "rollcall_settings")).toBe(false);
     db.prepare("INSERT INTO system_state (key,value,updated_at) VALUES ('kept','yes',?)").run("2026-09-11T00:00:00.000Z");
 
     migrate(db);
@@ -146,15 +148,31 @@ describe("schema migrations", () => {
     expect(after.map((row) => row.id)).toEqual(migrations.map((migration) => migration.id));
     // 既有迁移记录逐字节不变，只有缺失的那一条被追加。
     expect(after.slice(0, -1)).toEqual(before);
-    expect(tableExists(db, "device_timetables")).toBe(true);
-    expect(tableExists(db, "crash_reports")).toBe(true);
     expect(tableExists(db, "device_teachers")).toBe(true);
+    expect(tableExists(db, "rollcall_settings")).toBe(true);
     // 升级不破坏已有业务数据。
     expect((db.prepare("SELECT value FROM system_state WHERE key='kept'").get() as { value: string }).value).toBe("yes");
     // 升级后 schema 与最后一条记录指纹一致，随后再次 migrate() 为空操作。
     expect(after.at(-1)?.checksum).toBe(schemaFingerprint(db));
     migrate(db);
     expect(migrationRows(db)).toEqual(after);
+    db.close();
+  });
+
+  it("keeps roll-call settings honest at the table level", () => {
+    const db = createDb();
+    const insert = db.prepare(`INSERT INTO rollcall_settings (id,scope_type,scope_id,enabled,notify,single_seconds,multi_seconds,revision,updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?)`);
+    // 每个作用域只留一份设置，重复写入由调用方改为覆盖。
+    expect(() => insert.run("r1", "device", "d1", 1, null, null, null, 1, "2026-09-11T00:00:00.000Z")).not.toThrow();
+    expect(() => insert.run("r2", "device", "d1", null, 1, null, null, 2, "2026-09-11T00:00:00.000Z")).toThrow(/UNIQUE/i);
+    // 全空的一行等于没表态：不该存在，清除覆盖走删除而不是写空。
+    expect(() => insert.run("r3", "school", null, null, null, null, null, 3, "2026-09-11T00:00:00.000Z")).toThrow(/CHECK constraint/i);
+    expect(() => insert.run("r4", "school", null, 2, null, null, null, 4, "2026-09-11T00:00:00.000Z")).toThrow(/CHECK constraint/i);
+    // 秒数区间与插件端输入框一致，越界的脏数据在入库前就停住。
+    expect(() => insert.run("r5", "school", null, null, null, 0, null, 5, "2026-09-11T00:00:00.000Z")).toThrow(/CHECK constraint/i);
+    expect(() => insert.run("r6", "school", null, null, null, null, 301, 6, "2026-09-11T00:00:00.000Z")).toThrow(/CHECK constraint/i);
+    expect(() => insert.run("r7", "elsewhere", null, 1, null, null, null, 7, "2026-09-11T00:00:00.000Z")).toThrow(/CHECK constraint/i);
     db.close();
   });
 });

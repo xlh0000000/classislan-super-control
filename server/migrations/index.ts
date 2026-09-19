@@ -608,7 +608,31 @@ const teacherAccounts: Migration = {
   },
 };
 
-export const migrations: Migration[] = [baseline, taskOrchestration, enrollmentIdempotency, orgScopeRbac, policyEpochAndCas, taskPauseAndCancel, deviceResponseReplay, sessionsTable, enrollmentTokenTags, taskIdempotencyScope, auditCheckpoints, buildingLayout, policyAppendMode, deviceTransport, rollCallRoster, deviceTimetables, crashReports, autoTasks, teacherAccounts];
+/**
+ * 点名设置：与名单同一套作用域，逐字段向下继承（设备 > 最近的组织祖先 > 全校）。
+ * 每一列留空即“这一项不表态”，继续向上级继承，最终由设备本机的设置兜底，
+ * 因此管理员可以只关掉全校的抽人，而不必先给每台机器写一遍。
+ */
+const rollCallSettings: Migration = {
+  id: "0019-rollcall-settings",
+  up(db) {
+    db.exec(`CREATE TABLE IF NOT EXISTS rollcall_settings (
+      id TEXT PRIMARY KEY,
+      scope_type TEXT NOT NULL CHECK(scope_type IN ('school','organization','device')),
+      scope_id TEXT,
+      enabled INTEGER CHECK(enabled IS NULL OR enabled IN (0,1)),
+      notify INTEGER CHECK(notify IS NULL OR notify IN (0,1)),
+      single_seconds INTEGER CHECK(single_seconds IS NULL OR (single_seconds BETWEEN 1 AND 120)),
+      multi_seconds INTEGER CHECK(multi_seconds IS NULL OR (multi_seconds BETWEEN 2 AND 300)),
+      revision INTEGER NOT NULL,
+      updated_at TEXT NOT NULL,
+      CHECK(enabled IS NOT NULL OR notify IS NOT NULL OR single_seconds IS NOT NULL OR multi_seconds IS NOT NULL)
+    ) STRICT`);
+    db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_rollcall_settings_scope ON rollcall_settings(scope_type, COALESCE(scope_id,''))");
+  },
+};
+
+export const migrations: Migration[] = [baseline, taskOrchestration, enrollmentIdempotency, orgScopeRbac, policyEpochAndCas, taskPauseAndCancel, deviceResponseReplay, sessionsTable, enrollmentTokenTags, taskIdempotencyScope, auditCheckpoints, buildingLayout, policyAppendMode, deviceTransport, rollCallRoster, deviceTimetables, crashReports, autoTasks, teacherAccounts, rollCallSettings];
 
 /** 对除 schema_migrations 外的全部 schema 对象做稳定指纹，用于校验迁移记录与真实 schema 是否一致。 */
 export function schemaFingerprint(db: Database.Database) {

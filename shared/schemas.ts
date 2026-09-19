@@ -403,6 +403,44 @@ export const rollCallRosterSchema = z.object({
   if (!value.scopeId) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["scopeId"], message: "该作用域必须指定目标。" });
 });
 
+/**
+ * 点名设置：与名单共用一套作用域，整行覆盖式写入。
+ * 每个字段留空（null/缺省）都表示“这一项不表态”，继续向上级作用域继承，
+ * 最终由设备本机的设置兜底；因此关掉全校抽人不必逐台设备写一遍。
+ */
+export const rollCallSettingsSchema = z.object({
+  scopeType: z.enum(["school", "organization", "device"]),
+  scopeId: z.string().uuid().nullable().optional(),
+  enabled: z.boolean().nullish(),
+  notify: z.boolean().nullish(),
+  singleSeconds: z.number().int().min(1).max(120).nullish(),
+  multiSeconds: z.number().int().min(2).max(300).nullish(),
+}).superRefine((value, ctx) => {
+  if (value.scopeType === "school") {
+    if (value.scopeId) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["scopeId"], message: "全校设置不能指定目标。" });
+  } else if (!value.scopeId) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["scopeId"], message: "该作用域必须指定目标。" });
+  }
+  // 一项都不表态等于把这行的内容清空，应落到删除该行，而不是留下一条永不生效的记录。
+  if (value.enabled === undefined && value.notify === undefined && value.singleSeconds === undefined && value.multiSeconds === undefined)
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "至少要表态一项点名设置。" });
+});
+
+/**
+ * 点名设置的逐字段界面表：界面只按这张表渲染，
+ * 因此字段名与 rollCallSettingsSchema、插件端 RemoteRollCallSettings 必须由同一条 parity 测试守住。
+ */
+export const rollCallSettingFields = [
+  { key: "enabled", kind: "switch", label: "点名悬浮窗", hint: "关掉后设备上的点名窗直接不见。", on: "显示", off: "隐藏" },
+  { key: "notify", kind: "switch", label: "抽中时提醒", hint: "抽到人后同时拉起一条提醒。", on: "提醒", off: "不提醒" },
+  { key: "singleSeconds", kind: "number", label: "单人停留秒数", hint: "“抽人”结果停留的时间。", min: 1, max: 120 },
+  { key: "multiSeconds", kind: "number", label: "多人停留秒数", hint: "“多人”抽 2 人停留的时间，每多一人再加 1 秒。", min: 2, max: 300 },
+] as const;
+
+export type RollCallSettingKey = (typeof rollCallSettingFields)[number]["key"];
+/** 一项设置的三态取值：null 表示这一层不表态，交给上级作用域，最终由设备本机兜底。 */
+export type RollCallSettingsDraft = Record<RollCallSettingKey, boolean | number | null>;
+
 export const roomDevicesSchema = z.object({
   add: z.array(z.string().uuid()).max(500).default([]),
   remove: z.array(z.string().uuid()).max(500).default([]),

@@ -1,23 +1,44 @@
 <script setup lang="ts">
+import { type RollCallSettingKey, type RollCallSettingsDraft } from "#shared/schemas";
+
 type ScopeType = "school" | "organization" | "device";
 type Roster = {
   id: string; name: string; scopeType: ScopeType; scopeId: string | null;
   names: string[]; revision: number; updatedAt: string;
 };
+/** 某个作用域自己写下的点名设置行；字段为 null 表示这一项不表态。 */
+type SettingsRow = RollCallSettingsDraft & {
+  scopeType: ScopeType; scopeId: string | null; revision: number; updatedAt: string;
+};
 /** 逐台设备的生效名单：命中层级告诉教师这份名单是不是自己改得动的。 */
 type EffectiveDevice = {
   deviceId: string; deviceName: string; names: string[]; revision: number;
   scopeType: ScopeType | "none"; rosterId: string | null;
+  settings: RollCallSettingsDraft;
+  settingSources: Partial<Record<RollCallSettingKey, string>>;
+  deviceOverride: RollCallSettingsDraft | null;
 };
 type OrgData = { nodes: { id: string; name: string; path: string }[] };
 type DeviceRow = { id: string; name: string; orgName: string };
+
+const EMPTY_DRAFT: RollCallSettingsDraft = { enabled: null, notify: null, singleSeconds: null, multiSeconds: null };
+
+/** 设置行带着作用域与版本等元信息，填表只取那四项表态。 */
+function settingsOf(row: Pick<SettingsRow, "enabled" | "notify" | "singleSeconds" | "multiSeconds"> | null): RollCallSettingsDraft {
+  return {
+    enabled: row?.enabled ?? null,
+    notify: row?.notify ?? null,
+    singleSeconds: row?.singleSeconds ?? null,
+    multiSeconds: row?.multiSeconds ?? null,
+  };
+}
 
 const toast = useToast();
 const { user } = useSession();
 /** 教师没有名单库与组织树，只能看到自己设备上的生效名单。 */
 const teacherView = user.value?.role === "teacher";
-const { data, refresh } = await useFetch<{ rosters: Roster[] }>("/api/v1/admin/rollcall", {
-  default: () => ({ rosters: [] }),
+const { data, refresh } = await useFetch<{ rosters: Roster[]; settings: SettingsRow[] }>("/api/v1/admin/rollcall", {
+  default: () => ({ rosters: [], settings: [] }),
   immediate: !teacherView,
 });
 const { data: org } = await useFetch<OrgData>("/api/v1/admin/organization", {
@@ -121,6 +142,47 @@ async function remove() {
   } catch (err) { toast.err((err as { data?: { message?: string } })?.data?.message ?? "删除名单失败。"); }
   finally { pending.value = false; }
 }
+
+/** 点名默认设置：先定作用域，再看这一层已经写下的那一行。 */
+const defaultScope = ref<{ type: "school" | "organization"; id: string }>({ type: "school", id: "" });
+const defaultRow = computed(() => data.value.settings.find((row) =>
+  row.scopeType === defaultScope.value.type && (row.scopeId ?? "") === defaultScope.value.id) ?? null);
+const defaultDraft = ref<RollCallSettingsDraft>(settingsOf(defaultRow.value));
+const defaultsBusy = ref(false);
+
+/** 换作用域就把表单换成那一行自己的表态，不把上一作用域的值带过去。 */
+watch(defaultScope, () => {
+  defaultDraft.value = settingsOf(defaultRow.value);
+}, { deep: true });
+
+async function saveDefaults(cleared = false) {
+  if (defaultsBusy.value) return;
+  const scope = defaultScope.value;
+  if (scope.type !== "school" && !scope.id) return toast.err("请选择默认设置作用的目标组织。");
+  defaultsBusy.value = true;
+  try {
+    const draft = defaultDraft.value;
+    await $fetch("/api/v1/admin/rollcall/settings", {
+      method: "POST" as const,
+      headers: import.meta.client ? { origin: window.location.origin } : undefined,
+      body: {
+        scopeType: scope.type, scopeId: scope.type === "school" ? null : scope.id,
+        enabled: draft.enabled, notify: draft.notify,
+        singleSeconds: draft.singleSeconds, multiSeconds: draft.multiSeconds,
+      },
+    });
+    await refresh();
+    defaultDraft.value = settingsOf(defaultRow.value);
+    toast.ok(cleared ? "已清除本层设置，交回上级与设备决定。" : "默认设置已保存并开始下发。");
+  } catch (err) { toast.err((err as { data?: { message?: string } })?.data?.message ?? "保存默认设置失败。"); }
+  finally { defaultsBusy.value = false; }
+}
+
+/** 清除本层设置：四项全不表态，服务端据此删掉这一行。 */
+async function clearDefaults() {
+  defaultDraft.value = { ...EMPTY_DRAFT };
+  await saveDefaults(true);
+}
 </script>
 
 <template>
@@ -167,6 +229,34 @@ async function remove() {
       </footer>
     </article>
   </section>
+
+  <fieldset class="defaults">
+    <legend>点名默认设置</legend>
+    <div class="scope-pick">
+      <label>作用范围
+        <select v-model="defaultScope.type" @change="defaultScope.id = ''">
+          <option value="school">全校</option>
+          <option value="organization">组织</option>
+        </select>
+      </label>
+      <label v-if="defaultScope.type === 'organization'">目标组织
+        <select v-model="defaultScope.id">
+          <option value="">请选择组织</option>
+          <option v-for="node in org.nodes" :key="node.id" :value="node.id">{{ node.name }}</option>
+        </select>
+      </label>
+    </div>
+    <RollCallSettingsFields v-model="defaultDraft" follow-label="交给设备" :disabled="defaultsBusy" />
+    <footer class="defaults-foot">
+      <small>{{ defaultRow
+        ? `${revisionLabel(defaultRow.revision)} · ${defaultRow.updatedAt.slice(5, 16).replace("T", " ")}`
+        : "这一层还没表态，设备用自己的设置。" }}</small>
+      <div class="controls">
+        <button type="button" class="ghost" :disabled="defaultsBusy || !defaultRow" @click="clearDefaults">清除本层设置</button>
+        <button type="button" class="solid" :disabled="defaultsBusy" @click="saveDefaults()">{{ defaultsBusy ? "保存中…" : "保存并下发" }}</button>
+      </div>
+    </footer>
+  </fieldset>
   </template>
 
   <AppDialog v-if="draft" :title="teacherView ? `编辑 ${draft.name}` : (draft.id ? '编辑名单' : '新增名单')" :kicker="teacherView ? '每行一个姓名' : '选好范围，填上姓名'" width="640px" @close="draft = null">
@@ -243,5 +333,13 @@ async function remove() {
 .form input, .form select, .names-box textarea { width: 100%; }
 .names-box { margin-top: 18px; }
 .names-box textarea { padding: 12px 14px; line-height: 1.9; resize: vertical; }
-@media (max-width: 640px) { .form { grid-template-columns: 1fr; } }
+.defaults { margin-top: 14px; padding: 22px 24px; border: 1px solid var(--line-soft); background: var(--surface-1); }
+.defaults legend { padding: 0 10px; color: var(--ink-muted); font-size: 10px; letter-spacing: 1.2px; }
+.scope-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; padding-bottom: 16px; border-bottom: 1px solid var(--line-soft); }
+.scope-pick label { display: grid; gap: 8px; color: var(--ink-muted); font-size: 11px; letter-spacing: 0.6px; }
+.scope-pick select { width: 100%; }
+.defaults-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line-soft); }
+.defaults-foot small { color: var(--ink-faint); font-size: 10px; letter-spacing: 0.8px; font-variant-numeric: tabular-nums; }
+.defaults-foot div { display: flex; align-items: center; gap: 14px; }
+@media (max-width: 640px) { .form, .scope-pick { grid-template-columns: 1fr; } }
 </style>

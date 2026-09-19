@@ -39,14 +39,31 @@ public sealed class RollCallService : BackgroundService
     public RollCallStore Roster => _roster;
 
     /// <summary>
-    /// 生效的名单：集控端下发过就用下发的（下发空名单也算数），
+    /// 生效的名单：集控端指派过就用指派的（下发空名单也算数），
     /// 否则回落到设置页维护的本机名字表，没连集控也能点名。
     /// </summary>
     public IReadOnlyList<string> EffectiveNames =>
         _roster.HasServerRoster ? _roster.Names : _store.Settings.RollCallLocalNames;
 
-    /// <summary>当前生效的是本机名字表（还没收到集控端名单）。</summary>
+    /// <summary>当前生效的是本机名字表（集控端没给这台设备指派名单）。</summary>
     public bool UsingLocalNames => !_roster.HasServerRoster;
+
+    /// <summary>
+    /// 生效的悬浮窗开关：集控端表过态就以它为准（关掉即整个窗口不见），
+    /// 没表态时回到设置页的本机开关。
+    /// </summary>
+    public bool EffectiveEnabled => _roster.Settings.Enabled ?? _store.Settings.RollCallEnabled;
+
+    /// <summary>生效的抽中提醒开关，取值顺序同上。</summary>
+    public bool EffectiveNotify => _roster.Settings.Notify ?? _store.Settings.RollCallNotify;
+
+    /// <summary>生效的单人结果秒数。</summary>
+    public int EffectiveSingleSeconds =>
+        Math.Clamp(_roster.Settings.SingleSeconds ?? _store.Settings.RollCallSingleSeconds, 1, 120);
+
+    /// <summary>生效的多人结果基准秒数（2 人停留时长，每多一人再加 1 秒）。</summary>
+    public int EffectiveMultiSeconds =>
+        Math.Clamp(_roster.Settings.MultiSeconds ?? _store.Settings.RollCallMultiSeconds, 2, 300);
 
     /// <summary>悬浮窗当前是否可见。设置页据此渲染开关，避免和真实状态不一致。</summary>
     public bool IsVisible => _window is { IsVisible: true };
@@ -65,10 +82,20 @@ public sealed class RollCallService : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await _appStarted.Task.WaitAsync(stoppingToken);
-        if (_store.Settings.RollCallEnabled) Show();
+        ApplyVisibility();
+        // 集控端把开关关掉时要立刻收窗，不能等到下次启动。
+        _roster.Changed += ApplyVisibility;
         // 悬浮窗常驻运行，等到宿主停止即可；这里只负责维持事件订阅。
         try { await Task.Delay(Timeout.Infinite, stoppingToken); }
         catch (OperationCanceledException) { }
+        finally { _roster.Changed -= ApplyVisibility; }
+    }
+
+    /// <summary>按生效开关显示或隐藏悬浮窗：集控端表过态时本机说了不算。</summary>
+    public void ApplyVisibility()
+    {
+        if (EffectiveEnabled) Show();
+        else Hide();
     }
 
     public override Task StopAsync(CancellationToken cancellationToken)
@@ -147,11 +174,8 @@ public sealed class RollCallService : BackgroundService
         }
         var take = Math.Clamp(count, 1, names.Count);
         var picked = Pick(names, take);
-        var settings = _store.Settings;
         // 多人显示更久：以多人基准秒数为起点，每多抽一个人再多显示 1 秒。
-        var seconds = take == 1
-            ? Math.Clamp(settings.RollCallSingleSeconds, 1, 120)
-            : Math.Clamp(settings.RollCallMultiSeconds, 2, 300) + (take - 2);
+        var seconds = take == 1 ? EffectiveSingleSeconds : EffectiveMultiSeconds + (take - 2);
 
         var window = new RollCallResultWindow();
         window.ShowResult(picked, seconds);
@@ -167,7 +191,7 @@ public sealed class RollCallService : BackgroundService
         window.Show();
 
         // 提醒跟着同一个秒数走：否则提醒还挂在屏幕上，悬浮窗却已经可以再抽了。
-        if (settings.RollCallNotify) Notify("点名", string.Join("、", picked), seconds);
+        if (EffectiveNotify) Notify("点名", string.Join("、", picked), seconds);
     }
 
     /// <summary>部分洗牌抽人：同一轮内不会重复抽到同一个人。</summary>

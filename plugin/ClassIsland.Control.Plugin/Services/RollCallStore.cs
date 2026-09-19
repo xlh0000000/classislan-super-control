@@ -3,11 +3,25 @@ using Microsoft.Extensions.Logging;
 
 namespace ClassIsland.Control.Plugin.Services;
 
-/// <summary>集控端下发的点名名单本地缓存。名单是只读下发内容，不参与入网封条。</summary>
+/// <summary>
+/// 集控端下发的点名设置。每项可空：null 表示集控端这一项不表态，
+/// 由本机设置页维护的值兜底，因此关掉全校抽人不必逐台设备写一遍。
+/// </summary>
+public sealed record RollCallSettingsSnapshot
+{
+    public bool? Enabled { get; init; }
+    public bool? Notify { get; init; }
+    public int? SingleSeconds { get; init; }
+    public int? MultiSeconds { get; init; }
+}
+
+/// <summary>集控端下发的点名内容本地缓存（名单 + 设置）。都是只读下发，不参与入网封条。</summary>
 public sealed record RollCallSnapshot
 {
     public long Revision { get; init; }
-    public List<string> Names { get; init; } = [];
+    /// <summary>null 表示生效链上没有指派给这台设备的名单，本机名字表继续生效。</summary>
+    public List<string>? Names { get; init; }
+    public RollCallSettingsSnapshot Settings { get; init; } = new();
     public DateTime UpdatedAtUtc { get; init; }
 }
 
@@ -33,15 +47,19 @@ public sealed class RollCallStore
 
     public RollCallSnapshot Snapshot { get; private set; }
 
-    public IReadOnlyList<string> Names => Snapshot.Names;
+    /// <summary>生效名单；集控端没给这台设备指派名单时为空，调用方据 <see cref="HasServerRoster"/> 判断。</summary>
+    public IReadOnlyList<string> Names => Snapshot.Names ?? [];
+
+    public RollCallSettingsSnapshot Settings => Snapshot.Settings;
 
     /// <summary>
-    /// 集控端是否已经下发过名单。下发的空名单也算数（修订号 > 0），
+    /// 集控端是否指派了名单给这台设备。下发的空名单也算数，
     /// 否则“服务端故意清空名单”会被本机名字表顶掉。
+    /// 修订号是全局计数（别的设备改名单也会前进），不能拿它证明本机有过名单。
     /// </summary>
-    public bool HasServerRoster => Snapshot.Revision > 0 || Snapshot.Names.Count > 0;
+    public bool HasServerRoster => Snapshot.Names is not null;
 
-    /// <summary>名单发生变化时触发，供悬浮窗刷新标题。</summary>
+    /// <summary>名单或设置发生变化时触发，供悬浮窗刷新可见状态与标题。</summary>
     public event Action? Changed;
 
     private RollCallSnapshot Load()
@@ -60,21 +78,28 @@ public sealed class RollCallStore
     }
 
     /// <summary>
-    /// 采纳服务端下发的名单。修订号一致即空操作，
-    /// 因此“服务端只回带变化”与“每轮都回带”两种策略都能正确工作。
+    /// 采纳服务端下发的点名内容。修订号一致即空操作：服务端只在设备手上的修订过期时
+    /// 才回带整份名单与设置，因此这里收到的一定是新的那一份。
     /// </summary>
-    public async Task<bool> ApplyAsync(long revision, IReadOnlyList<string> names, CancellationToken cancellationToken = default)
+    public async Task<bool> ApplyAsync(long revision, IReadOnlyList<string>? names,
+        RemoteRollCallSettings? settings, CancellationToken cancellationToken = default)
     {
         await _gate.WaitAsync(cancellationToken);
         var changed = false;
         try
         {
-            if (revision == Snapshot.Revision && names.SequenceEqual(Snapshot.Names, StringComparer.Ordinal))
-                return false;
+            if (revision == Snapshot.Revision) return false;
             var snapshot = new RollCallSnapshot
             {
                 Revision = revision,
-                Names = [.. names],
+                Names = names is null ? null : [.. names],
+                Settings = new RollCallSettingsSnapshot
+                {
+                    Enabled = settings?.Enabled,
+                    Notify = settings?.Notify,
+                    SingleSeconds = settings?.SingleSeconds,
+                    MultiSeconds = settings?.MultiSeconds,
+                },
                 UpdatedAtUtc = DateTime.UtcNow,
             };
             var directory = Path.GetDirectoryName(_path);

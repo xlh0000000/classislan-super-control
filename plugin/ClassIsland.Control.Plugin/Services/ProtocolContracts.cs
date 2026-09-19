@@ -39,8 +39,14 @@ public sealed record WebSocketError(string Type, int StatusCode, string Message,
 /// <summary>服务端对单条 ACK 的回执：accepted/already-recorded 表示结果已被接收，rejected 表示必须保留并处理。</summary>
 public sealed record AckReceipt(string CommandId, string Status, string? Reason = null, string? State = null);
 public sealed record RemotePolicy(long Revision, long Epoch, JsonElement Document, Dictionary<string, JsonElement>? Locks, string DocumentHash);
-/// <summary>云端下发的点名名单；仅在设备手上的修订过期时出现。</summary>
-public sealed record RemoteRollCall(long Revision, IReadOnlyList<string> Names);
+/// <summary>
+/// 云端下发的点名内容：名单加四项设置，仅在设备手上的修订过期时整份回带。
+/// Names 为 null 表示生效链上没有指派给这台设备的名单，本机名字表继续生效；
+/// 设置里的字段为 null 表示集控端这一项不表态，由本机设置兜底。
+/// </summary>
+public sealed record RemoteRollCall(long Revision, IReadOnlyList<string>? Names, RemoteRollCallSettings? Settings = null);
+/// <summary>集控端下发的点名设置，与名单共用一套作用域和修订号。</summary>
+public sealed record RemoteRollCallSettings(bool? Enabled, bool? Notify, int? SingleSeconds, int? MultiSeconds);
 /// <summary>
 /// 设备端崩溃报告：由插件在本机捕获未处理异常后生成，随轮询上报。
 /// Id 由客户端生成，服务端以它为主键去重，因此重传天然幂等。

@@ -68,6 +68,14 @@ export const CAPABILITY_LABELS: Record<string, string> = {
   "enrollment.release.v1": "解除集控",
 };
 
+/** 点名设置命中层级：local 表示没有任何作用域表过态，值由设备本机设置决定。 */
+export const ROLLCALL_SOURCE_LABELS: Record<string, string> = {
+  device: "本机覆盖",
+  organization: "组织默认",
+  school: "全校默认",
+  local: "设备本机设置",
+};
+
 export const ACTOR_TYPE_LABELS: Record<string, string> = {
   user: "管理员",
   device: "设备",

@@ -6,7 +6,7 @@ import type { AuthenticatedDeviceRequest } from "./device-auth";
 import { appendAuditWithin, canonicalJson, sha256 } from "./security";
 import { advanceTaskState, claimCommandsForDevice, terminalCommandStates } from "./tasks";
 import { materializeConfigReferences, resolvePolicyForDeviceFromDb } from "./policy";
-import { resolveRollCallForDevice } from "./rollcall";
+import { resolveRollCallForDevice, rollCallDeliveryRevision } from "./rollcall";
 import { signResponseBody } from "./server-signing";
 import { timetableDigestMatches, upsertDeviceTimetable } from "./device-timetable";
 import { recordCrashReports } from "./crash-reports";
@@ -137,8 +137,11 @@ export function processDevicePoll(
     advanceTaskState(db, seenAt);
     const commands = claimCommandsForDevice(db, deviceId, 20, seenAt, { advance: false });
 
-    // 点名名单：与策略同源地在事务内解析，保证响应正文与缓存重放逐字节一致。
+    // 点名名单与设置：与策略同源地在事务内解析，保证响应正文与缓存重放逐字节一致。
     const rollCall = resolveRollCallForDevice(db, deviceId);
+    // 交付修订号是全局计数：名单与设置的每次写入都会推进它，因此单独改了设置
+    // 也能让设备下次轮询取回整份点名内容（名单行的 revision 不会为此变动）。
+    const rollCallRevision = rollCallDeliveryRevision(db);
     const policy = resolvePolicyForDeviceFromDb(db, deviceId);
     policy.document = materializeConfigReferences(policy.document) as Record<string, unknown>;
     const policyDocument = canonicalJson(policy.document);
@@ -205,10 +208,11 @@ export function processDevicePoll(
       bindingCode,
       // 逐条回执：设备只删除被明确接受的 ACK，冲突结果保留并告警。
       acknowledgements: receipts,
-      // 点名名单：仅在设备手上的修订过期时回带整份名单，避免每轮重复下发。
-      rollcall: rollCall.revision === (input.rollCallRevision ?? 0)
+      // 点名：仅在设备手上的修订过期时回带整份内容（名单 + 设置），避免每轮重复下发。
+      // names 为 null 表示生效链上没有指派给这台设备的名单，设备据此回落到本机名字表。
+      rollcall: rollCallRevision === (input.rollCallRevision ?? 0)
         ? null
-        : { revision: rollCall.revision, names: rollCall.names },
+        : { revision: rollCallRevision, names: rollCall.scopeType === "none" ? null : rollCall.names, settings: rollCall.settings },
       policy: policyChanged
         ? { revision: policy.revision, epoch: policy.epoch, document: policy.document, locks: policy.locks, documentHash: policyHash }
         : null,

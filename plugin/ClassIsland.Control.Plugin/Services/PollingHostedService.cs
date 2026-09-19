@@ -186,9 +186,9 @@ public sealed class PollingHostedService(
                 timeOffset.ObserveServerTime(response.ServerTimeUtc, HostClock(), poll.RoundTrip);
                 // 每日自动偏移：按“今天”重算生效值，跨过零点即自动加一档；未启用时是空操作。
                 timeOffset.TickDaily();
-                // 点名名单：服务端只在设备手上的修订过期时回带，落盘后供悬浮窗离线使用。
-                if (response.RollCall is { } roster)
-                    await rollCall.ApplyAsync(roster.Revision, roster.Names, stoppingToken);
+                // 点名内容：服务端只在设备手上的修订过期时回带整份（名单 + 设置），落盘后供悬浮窗离线使用。
+                if (response.RollCall is { } delivered)
+                    await rollCall.ApplyAsync(delivered.Revision, delivered.Names, delivered.Settings, stoppingToken);
                 // 课表上传：服务端要求重传时强制下次带全量；接受后清除待重传标记。
                 if (timetableEnabled)
                 {

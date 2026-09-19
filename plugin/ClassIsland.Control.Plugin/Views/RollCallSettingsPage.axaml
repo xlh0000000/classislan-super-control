@@ -14,12 +14,20 @@
       <StackPanel Classes="cardContainer">
         <controls:FASettingsExpanderItem Content="显示点名悬浮窗" Description="常驻显示，可拖动。">
           <controls:FASettingsExpanderItem.Footer>
-            <ToggleSwitch x:Name="EnableSwitch" OnContent="已显示" OffContent="已隐藏"/>
+            <StackPanel Spacing="2" HorizontalAlignment="Right">
+              <ToggleSwitch x:Name="EnableSwitch" OnContent="已显示" OffContent="已隐藏"/>
+              <TextBlock x:Name="EnableNote" FontSize="12" Opacity="0.7" TextWrapping="Wrap"
+                         IsVisible="False" MaxWidth="260" HorizontalAlignment="Right" TextAlignment="Right"/>
+            </StackPanel>
           </controls:FASettingsExpanderItem.Footer>
         </controls:FASettingsExpanderItem>
         <controls:FASettingsExpanderItem Content="抽中时提醒" Description="同时拉起 ClassIsland 提醒，时长与名字框一致。">
           <controls:FASettingsExpanderItem.Footer>
-            <ToggleSwitch x:Name="NotifySwitch" OnContent="开" OffContent="关"/>
+            <StackPanel Spacing="2" HorizontalAlignment="Right">
+              <ToggleSwitch x:Name="NotifySwitch" OnContent="开" OffContent="关"/>
+              <TextBlock x:Name="NotifyNote" FontSize="12" Opacity="0.7" TextWrapping="Wrap"
+                         IsVisible="False" MaxWidth="260" HorizontalAlignment="Right" TextAlignment="Right"/>
+            </StackPanel>
           </controls:FASettingsExpanderItem.Footer>
         </controls:FASettingsExpanderItem>
       </StackPanel>
@@ -61,14 +69,22 @@
       <StackPanel Classes="cardContainer">
         <controls:FASettingsExpanderItem Content="单人显示时长" Description="“抽人”结果停留的秒数。">
           <controls:FASettingsExpanderItem.Footer>
-            <NumericUpDown x:Name="SingleBox" Minimum="1" Maximum="120" Increment="1"
-                           FormatString="0" Width="140"/>
+            <StackPanel Spacing="2" HorizontalAlignment="Right">
+              <NumericUpDown x:Name="SingleBox" Minimum="1" Maximum="120" Increment="1"
+                             FormatString="0" Width="140"/>
+              <TextBlock x:Name="SingleNote" FontSize="12" Opacity="0.7" TextWrapping="Wrap"
+                         IsVisible="False" MaxWidth="260" HorizontalAlignment="Right" TextAlignment="Right"/>
+            </StackPanel>
           </controls:FASettingsExpanderItem.Footer>
         </controls:FASettingsExpanderItem>
         <controls:FASettingsExpanderItem Content="多人显示时长" Description="“多人”抽 2 人停留的秒数，每多一人加 1 秒。">
           <controls:FASettingsExpanderItem.Footer>
-            <NumericUpDown x:Name="MultiBox" Minimum="2" Maximum="300" Increment="1"
-                           FormatString="0" Width="140"/>
+            <StackPanel Spacing="2" HorizontalAlignment="Right">
+              <NumericUpDown x:Name="MultiBox" Minimum="2" Maximum="300" Increment="1"
+                             FormatString="0" Width="140"/>
+              <TextBlock x:Name="MultiNote" FontSize="12" Opacity="0.7" TextWrapping="Wrap"
+                         IsVisible="False" MaxWidth="260" HorizontalAlignment="Right" TextAlignment="Right"/>
+            </StackPanel>
           </controls:FASettingsExpanderItem.Footer>
         </controls:FASettingsExpanderItem>
         <controls:FASettingsExpanderItem Content="窗口位置" Description="默认停在工作区右下角，可拖动。">
