@@ -82,8 +82,8 @@ public partial class RollCallWindow : Window
     /// <summary>把设置页的尺寸与底色不透明度应用到窗口。</summary>
     public void ApplySettings(PluginSettings settings)
     {
-        Width = Math.Clamp(settings.RollCallWidth, 180, 900);
-        Height = Math.Clamp(settings.RollCallHeight, 84, 460);
+        Width = Math.Clamp(settings.RollCallWidth, 100, 1280);
+        Height = Math.Clamp(settings.RollCallHeight, 48, 640);
         // 真毛玻璃观感：设置值压缩到磨砂层 0.15–0.55、白色 tint 0.05–0.3，
         // 背景内容透过模糊层而不是被白雾盖住；纯实底留给不支持亚克力的回退色。
         var opacity = Math.Clamp(settings.RollCallOpacity, 0.2, 1);

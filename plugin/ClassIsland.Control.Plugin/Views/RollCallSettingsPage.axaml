@@ -52,9 +52,9 @@
       <StackPanel Classes="cardContainer">
         <c:SettingRow Content="窗口大小" Description="逻辑像素，改动立即生效。">
           <Grid ColumnDefinitions="*,*" ColumnSpacing="12" Width="300">
-            <NumericUpDown x:Name="WidthBox" Minimum="180" Maximum="900" Increment="10"
+            <NumericUpDown x:Name="WidthBox" Minimum="100" Maximum="1280" Increment="5"
                            FormatString="0" MinWidth="0" HorizontalAlignment="Stretch"/>
-            <NumericUpDown x:Name="HeightBox" Grid.Column="1" Minimum="84" Maximum="460" Increment="4"
+            <NumericUpDown x:Name="HeightBox" Grid.Column="1" Minimum="48" Maximum="640" Increment="2"
                            FormatString="0" MinWidth="0" HorizontalAlignment="Stretch"/>
           </Grid>
         </c:SettingRow>
