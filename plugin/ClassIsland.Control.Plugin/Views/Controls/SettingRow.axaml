@@ -1,17 +1,20 @@
 <UserControl
     x:Class="ClassIsland.Control.Plugin.Views.Controls.SettingRow"
-    x:Name="Root"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:conv="using:Avalonia.Data.Converters">
-  <!-- 设置页的一行：左侧标题与说明，右侧操作区。 -->
-  <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16" Margin="0,6">
-    <StackPanel Spacing="2" VerticalAlignment="Center">
-      <ContentPresenter Content="{Binding #Root.Content}" TextWrapping="Wrap" VerticalAlignment="Center"/>
-      <TextBlock Text="{Binding #Root.Description}"
-                 IsVisible="{Binding #Root.Description, Converter={x:Static conv:StringConverters.IsNotNullOrEmpty}}"
-                 Opacity="0.6" TextWrapping="Wrap"/>
-    </StackPanel>
-    <ContentPresenter Grid.Column="1" Content="{Binding #Root.Footer}" VerticalAlignment="Center"/>
-  </Grid>
+  <!-- 布局只能放在 Template 里：UserControl 会把外部写进来的 Content 当成自身内容，直接顶掉整行。 -->
+  <UserControl.Template>
+    <ControlTemplate>
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16" Margin="0,6">
+        <StackPanel Spacing="2" VerticalAlignment="Center">
+          <ContentPresenter Content="{TemplateBinding Content}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+          <TextBlock Text="{TemplateBinding Description}"
+                     IsVisible="{Binding Description, RelativeSource={RelativeSource TemplatedParent}, Converter={x:Static conv:StringConverters.IsNotNullOrEmpty}}"
+                     Opacity="0.6" TextWrapping="Wrap"/>
+        </StackPanel>
+        <ContentPresenter Grid.Column="1" Content="{TemplateBinding Footer}" VerticalAlignment="Center"/>
+      </Grid>
+    </ControlTemplate>
+  </UserControl.Template>
 </UserControl>
