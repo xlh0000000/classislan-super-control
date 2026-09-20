@@ -1,10 +1,7 @@
-FROM node:24.15.0-bookworm-slim AS build
+# 构建阶段用非 slim 镜像：它自带 python3/make/g++，better-sqlite3 的 binding.gyp 会被 npm 隐式编译
+# （apt 装这三样在 CI 里同样跑不起来，索性不依赖装包）；运行阶段仍用 slim，最终镜像体积不变。
+FROM node:24.15.0-bookworm AS build
 WORKDIR /app
-# better-sqlite3 带 binding.gyp，npm 会隐式跑 node-gyp 编译；slim 镜像没有 python3/make/g++，缺一样都装不上依赖
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends python3 make g++ \
-    && rm -rf /var/lib/apt/lists/* \
-    && npm config set python /usr/bin/python3
 COPY package*.json ./
 RUN npm ci --no-audit --no-fund
 COPY . .
