@@ -30,12 +30,12 @@
                                    TintColor="White" TintOpacity="0.2" MaterialOpacity="0.44"
                                    FallbackColor="#CCFFFFFF"/>
     </ExperimentalAcrylicBorder.Material>
-    <Grid ColumnDefinitions="*,*" ColumnSpacing="8" Margin="12">
+    <Grid x:Name="Layout" ColumnDefinitions="*,*" ColumnSpacing="8" Margin="12">
       <!-- 抽人：宿主强调色（accent）实心面 + 显式白字 -->
       <Button x:Name="SingleButton" Classes="accent" Click="SingleButton_OnClick"
               Padding="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
               HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
-        <TextBlock Classes="draw-text" Text="抽人" Foreground="#FFFFFFFF"/>
+        <TextBlock x:Name="SingleText" Classes="draw-text" Text="抽人" Foreground="#FFFFFFFF"/>
       </Button>
       <!-- 多人：深色实心面 + 浅字，面画在内容里，主题换不掉 -->
       <Button x:Name="MultiButton" Grid.Column="1" Click="MultiButton_OnClick"
@@ -44,7 +44,7 @@
               HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
         <Border x:Name="MultiShell" Background="#F2252820" BorderBrush="#40FFFFFF"
                 BorderThickness="1" CornerRadius="8">
-          <TextBlock Classes="draw-text" Text="多人" Foreground="#FFF0EEE5"/>
+          <TextBlock x:Name="MultiText" Classes="draw-text" Text="多人" Foreground="#FFF0EEE5"/>
         </Border>
       </Button>
     </Grid>

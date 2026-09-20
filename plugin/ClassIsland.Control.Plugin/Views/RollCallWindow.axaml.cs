@@ -82,8 +82,9 @@ public partial class RollCallWindow : Window
     /// <summary>把设置页的尺寸与底色不透明度应用到窗口。</summary>
     public void ApplySettings(PluginSettings settings)
     {
-        Width = Math.Clamp(settings.RollCallWidth, 100, 1280);
-        Height = Math.Clamp(settings.RollCallHeight, 48, 640);
+        Width = Math.Clamp(settings.RollCallWidth, 50, 1280);
+        Height = Math.Clamp(settings.RollCallHeight, 20, 640);
+        ApplyLayoutScale();
         // 真毛玻璃观感：设置值压缩到磨砂层 0.15–0.55、白色 tint 0.05–0.3，
         // 背景内容透过模糊层而不是被白雾盖住；纯实底留给不支持亚克力的回退色。
         var opacity = Math.Clamp(settings.RollCallOpacity, 0.2, 1);
@@ -92,6 +93,25 @@ public partial class RollCallWindow : Window
             material.MaterialOpacity = Math.Clamp(opacity * 0.55, 0.15, 0.55);
             material.TintOpacity = Math.Clamp(opacity * 0.25, 0.05, 0.3);
         }
+    }
+
+    /// <summary>
+    /// 边距、间隔与字号跟着窗口尺寸缩：12/8/16 那套是给默认大小用的，
+    /// 窗口收到 50×20 时若不动它们，两颗按钮里只剩裁掉的字。
+    /// 常态尺寸下取到的是上限，观感与原来一致。
+    /// </summary>
+    private void ApplyLayoutScale()
+    {
+        var x = Math.Clamp(Width / 20, 1, 12);
+        var y = Math.Clamp(Height / 8, 1, 12);
+        var spacing = Math.Clamp(x, 2, 8);
+        Layout.Margin = new Thickness(x, y, x, y);
+        Layout.ColumnSpacing = spacing;
+        // 一个字约占 1 号字高的宽度、一行约 1.45 倍，两个字的按钮要装下就得同时让宽和高。
+        var font = Math.Clamp(Math.Min((Width - 2 * x - spacing) / 4.4, (Height - 2 * y) / 1.45), 7, 16);
+        SingleText.FontSize = font;
+        MultiText.FontSize = font;
+        MultiShell.CornerRadius = new CornerRadius(Math.Clamp(font / 2, 2, 8));
     }
 
     /// <summary>
