@@ -1,3 +1,10 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+// 服务端版本只有这一个来源：构建期读 package.json，运行时两处接口各自取用。
+const packageJson = JSON.parse(readFileSync(fileURLToPath(new URL("package.json", import.meta.url)), "utf8")) as { version: string };
+const appVersion = packageJson.version;
+
 export default defineNuxtConfig({
   compatibilityDate: "2026-09-01",
 
@@ -22,6 +29,7 @@ export default defineNuxtConfig({
   },
   runtimeConfig: {
     dataDir: process.env.CLASSISLAND_CONTROL_DATA_DIR || "./data",
+    appVersion,
     public: {
       productName: "ClassIsland Control",
     },

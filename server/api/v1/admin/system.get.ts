@@ -17,7 +17,7 @@ export default defineEventHandler((event) => {
   return {
     initialized: initialized?.value === "true",
     database: "SQLite WAL",
-    version: "0.1.1",
+    version: useRuntimeConfig(event).appVersion,
     lastBackupAt: lastBackup?.value ?? null,
     backups,
   };
