@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <EnableDynamicLoading>true</EnableDynamicLoading>
@@ -8,7 +8,7 @@
     <RootNamespace>ClassIsland.Control.Plugin</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="ClassIsland.PluginSdk" Version="2.1.1.1">
+    <PackageReference Include="ClassIsland.PluginSdk" Version="2.1.0.1">
       <ExcludeAssets>runtime; native</ExcludeAssets>
     </PackageReference>
   </ItemGroup>

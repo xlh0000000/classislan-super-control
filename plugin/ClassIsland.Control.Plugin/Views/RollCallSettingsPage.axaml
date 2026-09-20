@@ -5,93 +5,93 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:ci="http://classisland.tech/schemas/xaml/core"
-    xmlns:controls="clr-namespace:FluentAvalonia.UI.Controls;assembly=FluentAvalonia"
+    xmlns:c="clr-namespace:ClassIsland.Control.Plugin.Views.Controls"
     mc:Ignorable="d"
     d:DesignWidth="800" d:DesignHeight="600">
   <ScrollViewer>
     <StackPanel Classes="settings-container animated-intro">
 
       <StackPanel Classes="cardContainer">
-        <controls:FASettingsExpanderItem Content="显示点名悬浮窗" Description="常驻显示，可拖动。">
-          <controls:FASettingsExpanderItem.Footer>
+        <c:SettingRow Content="显示点名悬浮窗" Description="常驻显示，可拖动。">
+          <c:SettingRow.Footer>
             <StackPanel Spacing="2" HorizontalAlignment="Right">
               <ToggleSwitch x:Name="EnableSwitch" OnContent="已显示" OffContent="已隐藏"/>
               <TextBlock x:Name="EnableNote" FontSize="12" Opacity="0.7" TextWrapping="Wrap"
                          IsVisible="False" MaxWidth="260" HorizontalAlignment="Right" TextAlignment="Right"/>
             </StackPanel>
-          </controls:FASettingsExpanderItem.Footer>
-        </controls:FASettingsExpanderItem>
-        <controls:FASettingsExpanderItem Content="抽中时提醒" Description="同时拉起 ClassIsland 提醒，时长与名字框一致。">
-          <controls:FASettingsExpanderItem.Footer>
+          </c:SettingRow.Footer>
+        </c:SettingRow>
+        <c:SettingRow Content="抽中时提醒" Description="同时拉起 ClassIsland 提醒，时长与名字框一致。">
+          <c:SettingRow.Footer>
             <StackPanel Spacing="2" HorizontalAlignment="Right">
               <ToggleSwitch x:Name="NotifySwitch" OnContent="开" OffContent="关"/>
               <TextBlock x:Name="NotifyNote" FontSize="12" Opacity="0.7" TextWrapping="Wrap"
                          IsVisible="False" MaxWidth="260" HorizontalAlignment="Right" TextAlignment="Right"/>
             </StackPanel>
-          </controls:FASettingsExpanderItem.Footer>
-        </controls:FASettingsExpanderItem>
+          </c:SettingRow.Footer>
+        </c:SettingRow>
       </StackPanel>
 
       <StackPanel Classes="cardContainer">
-        <controls:FASettingsExpanderItem Content="集控端名单" Description="集控端下发过就优先用它。">
-          <controls:FASettingsExpanderItem.Footer>
+        <c:SettingRow Content="集控端名单" Description="集控端下发过就优先用它。">
+          <c:SettingRow.Footer>
             <TextBlock x:Name="RosterText" VerticalAlignment="Center" TextAlignment="Right"
                        MaxWidth="360" TextWrapping="Wrap" Text="还没收到"/>
-          </controls:FASettingsExpanderItem.Footer>
-        </controls:FASettingsExpanderItem>
-        <controls:FASettingsExpanderItem Content="本机名单" Description="一行一个名字，没连集控时用它。">
+          </c:SettingRow.Footer>
+        </c:SettingRow>
+        <c:SettingRow Content="本机名单" Description="一行一个名字，没连集控时用它。">
           <StackPanel Spacing="6">
             <TextBox x:Name="LocalNamesBox" AcceptsReturn="True" TextWrapping="Wrap"
-                     MinHeight="112" PlaceholderText="一行一个名字"/>
+                     MinHeight="112" Watermark="一行一个名字"/>
             <TextBlock x:Name="RosterSourceText" TextWrapping="Wrap" FontSize="12" Opacity="0.7"
                        Text="没收到集控端名单时就用这份。"/>
           </StackPanel>
-        </controls:FASettingsExpanderItem>
+        </c:SettingRow>
       </StackPanel>
 
       <StackPanel Classes="cardContainer">
-        <controls:FASettingsExpanderItem Content="窗口大小" Description="逻辑像素，改动立即生效。">
+        <c:SettingRow Content="窗口大小" Description="逻辑像素，改动立即生效。">
           <Grid ColumnDefinitions="*,*" ColumnSpacing="12" Width="300">
             <NumericUpDown x:Name="WidthBox" Minimum="180" Maximum="900" Increment="10"
                            FormatString="0" MinWidth="0" HorizontalAlignment="Stretch"/>
             <NumericUpDown x:Name="HeightBox" Grid.Column="1" Minimum="84" Maximum="460" Increment="4"
                            FormatString="0" MinWidth="0" HorizontalAlignment="Stretch"/>
           </Grid>
-        </controls:FASettingsExpanderItem>
-        <controls:FASettingsExpanderItem Content="窗口不透明度" Description="悬浮窗底色的不透明度。">
-          <controls:FASettingsExpanderItem.Footer>
+        </c:SettingRow>
+        <c:SettingRow Content="窗口不透明度" Description="悬浮窗底色的不透明度。">
+          <c:SettingRow.Footer>
             <NumericUpDown x:Name="OpacityBox" Minimum="0.2" Maximum="1" Increment="0.05"
                            FormatString="0.00" Width="140"/>
-          </controls:FASettingsExpanderItem.Footer>
-        </controls:FASettingsExpanderItem>
+          </c:SettingRow.Footer>
+        </c:SettingRow>
       </StackPanel>
 
       <StackPanel Classes="cardContainer">
-        <controls:FASettingsExpanderItem Content="单人显示时长" Description="“抽人”结果停留的秒数。">
-          <controls:FASettingsExpanderItem.Footer>
+        <c:SettingRow Content="单人显示时长" Description="“抽人”结果停留的秒数。">
+          <c:SettingRow.Footer>
             <StackPanel Spacing="2" HorizontalAlignment="Right">
               <NumericUpDown x:Name="SingleBox" Minimum="1" Maximum="120" Increment="1"
                              FormatString="0" Width="140"/>
               <TextBlock x:Name="SingleNote" FontSize="12" Opacity="0.7" TextWrapping="Wrap"
                          IsVisible="False" MaxWidth="260" HorizontalAlignment="Right" TextAlignment="Right"/>
             </StackPanel>
-          </controls:FASettingsExpanderItem.Footer>
-        </controls:FASettingsExpanderItem>
-        <controls:FASettingsExpanderItem Content="多人显示时长" Description="“多人”抽 2 人停留的秒数，每多一人加 1 秒。">
-          <controls:FASettingsExpanderItem.Footer>
+          </c:SettingRow.Footer>
+        </c:SettingRow>
+        <c:SettingRow Content="多人显示时长" Description="“多人”抽 2 人停留的秒数，每多一人加 1 秒。">
+          <c:SettingRow.Footer>
             <StackPanel Spacing="2" HorizontalAlignment="Right">
               <NumericUpDown x:Name="MultiBox" Minimum="2" Maximum="300" Increment="1"
                              FormatString="0" Width="140"/>
               <TextBlock x:Name="MultiNote" FontSize="12" Opacity="0.7" TextWrapping="Wrap"
                          IsVisible="False" MaxWidth="260" HorizontalAlignment="Right" TextAlignment="Right"/>
             </StackPanel>
-          </controls:FASettingsExpanderItem.Footer>
-        </controls:FASettingsExpanderItem>
-        <controls:FASettingsExpanderItem Content="窗口位置" Description="默认停在工作区右下角，可拖动。">
-          <controls:FASettingsExpanderItem.Footer>
+          </c:SettingRow.Footer>
+        </c:SettingRow>
+        <c:SettingRow Content="窗口位置" Description="默认停在工作区右下角，可拖动。">
+          <c:SettingRow.Footer>
             <Button x:Name="ResetButton" Content="重置位置" Click="ResetButton_OnClick"/>
-          </controls:FASettingsExpanderItem.Footer>
-        </controls:FASettingsExpanderItem>
+          </c:SettingRow.Footer>
+        </c:SettingRow>
       </StackPanel>
 
     </StackPanel>

@@ -66,7 +66,7 @@ public partial class ControlSettingsPage : SettingsPageBase
 
         var enrolled = _status.IsEnrolled;
         DetailPanel.IsVisible = enrolled;
-        ManagedNotice.IsOpen = enrolled && _status.Locked;
+        ManagedNotice.IsVisible = enrolled && _status.Locked;
         ConnectPanel.IsVisible = !enrolled;
         if (!enrolled)
         {
@@ -92,8 +92,8 @@ public partial class ControlSettingsPage : SettingsPageBase
         var error = _status.PolicyError.Length > 0 ? _status.PolicyError : _status.LastError;
         if (error.Length == 0 && _store.SealTampered) error = "检测到本地集控身份文件被改动，已拒绝该改动并使用原身份。";
         if (error.Length == 0 && _store.RecoveredFromSeal) error = "本地集控身份曾被清空，已按入网封条恢复接入。";
-        ErrorBar.Message = error;
-        ErrorBar.IsOpen = error.Length > 0;
+        ErrorBarText.Text = error;
+        ErrorBar.IsVisible = error.Length > 0;
         TimetableStatusText.Text = !enrolled
             ? "未加入集控"
             : _status.TimetableSummary.Length > 0 ? _status.TimetableSummary : "尚未同步";        CrashStatusText.Text = !enrolled

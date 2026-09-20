@@ -6,7 +6,7 @@
     SizeToContent="WidthAndHeight"
     Background="Transparent"
     TransparencyLevelHint="AcrylicBlur,Blur,Transparent"
-    WindowDecorations="None"
+    SystemDecorations="None"
     CanResize="False"
     ShowInTaskbar="False"
     ShowActivated="False"
