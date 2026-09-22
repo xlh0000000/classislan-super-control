@@ -97,10 +97,17 @@
             <TextBlock x:Name="TimetableStatusText" VerticalAlignment="Center" TextAlignment="Right"
                        MaxWidth="420" TextWrapping="Wrap" Text="尚未同步"/>
           </c:SettingRow.Footer>
-        </c:SettingRow>        <c:SettingRow Content="崩溃上报" Description="本机未处理异常会记录并在下次连接时上报给集控端。">
+        </c:SettingRow>
+        <c:SettingRow Content="崩溃上报" Description="本机未处理异常会记录并在下次连接时上报给集控端。">
           <c:SettingRow.Footer>
             <TextBlock x:Name="CrashStatusText" VerticalAlignment="Center" TextAlignment="Right"
                        MaxWidth="420" TextWrapping="Wrap" Text="本机无崩溃记录"/>
+          </c:SettingRow.Footer>
+        </c:SettingRow>
+        <c:SettingRow Content="插件升级" Description="集控端下发新版本后，本机在没课时自动重启完成升级。">
+          <c:SettingRow.Footer>
+            <TextBlock x:Name="UpdateStatusText" VerticalAlignment="Center" TextAlignment="Right"
+                       MaxWidth="420" TextWrapping="Wrap" Text="尚未同步"/>
           </c:SettingRow.Footer>
         </c:SettingRow>
       </StackPanel>

@@ -111,6 +111,8 @@ export const TARGET_TYPE_LABELS: Record<string, string> = {
   tag: "设备标签",
   rollcall_roster: "点名册",
   crash: "崩溃记录",
+  plugin_release: "插件发布包",
+  plugin_update_target: "插件升级目标",
 };
 
 export const CRASH_KIND_LABELS: Record<string, string> = {
@@ -118,6 +120,14 @@ export const CRASH_KIND_LABELS: Record<string, string> = {
   "unobserved-task": "后台任务异常",
   "ui-thread": "界面线程异常",
   "host-exit": "程序退出",
+};
+
+/** 插件升级目标挂在哪种对象上；层级由低到高是 全校 < 组织 < 标签 < 设备。 */
+export const PLUGIN_SCOPE_LABELS: Record<string, string> = {
+  school: "全校",
+  organization: "组织",
+  tag: "标签",
+  device: "设备",
 };
 
 export function labelOf(labels: Record<string, string>, value: string | null | undefined): string {
@@ -129,4 +139,9 @@ export function labelOf(labels: Record<string, string>, value: string | null | u
 export function revisionLabel(revision: number | null | undefined): string {
   if (revision === null || revision === undefined) return "—";
   return `第 ${revision} 版`;
+}
+
+/** 时间戳统一走本地格式：ISO 串直接上界面既难读又满是英文分隔符。 */
+export function timeLabel(iso: string | null | undefined): string {
+  return iso ? new Date(iso).toLocaleString() : "—";
 }

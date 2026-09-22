@@ -24,7 +24,6 @@ const revisions = ref<Revision[]>([]);
 const fromRev = ref<number | null>(null); const toRev = ref<number | null>(null);
 const diff = ref<Record<string, unknown> | null>(null);
 const loading = ref(false);
-const deployTarget = ref<ConfigRow | null>(null);
 const editTarget = ref<ConfigRow | null>(null);
 const pendingRollback = ref<{ revision: number; name: string } | null>(null);
 const toast = useToast();
@@ -32,7 +31,6 @@ const toast = useToast();
 function kindLabel(value: string) { return CONFIG_KIND_LABELS[value] ?? value; }
 function fmt(iso: string | null) { return iso ? new Date(iso).toLocaleString() : "—"; }
 function countOf(value: string) { return (data.value ?? []).filter((item) => item.kind === value).length; }
-function onDeployed() { void refresh(); }
 function onSaved() { void refresh(); }
 
 /** 课表的内容在课表页排，其余类型就地用可视化编辑器改。 */
@@ -154,7 +152,6 @@ async function confirmRollback() {
         <button type="button" @click="edit(item)">编辑</button>
         <button v-if="item.kind === 'profile'" type="button" @click="editTarget = item">档案设置</button>
         <button type="button" @click="open(item)">修订</button>
-        <button type="button" @click="deployTarget = item">下发</button>
       </div>
     </article>
   </section>
@@ -197,7 +194,6 @@ async function confirmRollback() {
     </template>
   </AppDialog>
   <VisualConfigEditor v-if="editTarget" :configuration-id="editTarget.configurationId" :kind="editTarget.kind" :name="editTarget.name" :revision="editTarget.currentRevision ?? undefined" @saved="onSaved" @close="editTarget = null" />
-  <DeployTargets v-if="deployTarget" :configuration-id="deployTarget.configurationId" :configuration-name="deployTarget.name" :revision="deployTarget.currentRevision ?? undefined" @deployed="onDeployed" @close="deployTarget = null" />
   <ConfirmDialog
     v-if="pendingRollback"
     :title="`回滚到第 ${pendingRollback.revision} 版`"

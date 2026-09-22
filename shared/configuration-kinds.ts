@@ -1,6 +1,7 @@
 /**
  * 配置库的四种配置：导航栏按类型各给一个入口，四类都先进列表。
  * 课表（档案）的列表在这里，从行上再进课表页编辑具体内容。
+ * 这里只存内容：让配置上设备是策略的事（策略按节引用配置库条目），配置页不设下发入口。
  */
 export type ConfigKindEntry = {
   id: "profile" | "components" | "automation" | "plugin";

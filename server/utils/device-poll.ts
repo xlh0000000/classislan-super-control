@@ -12,6 +12,8 @@ import { timetableDigestMatches, upsertDeviceTimetable } from "./device-timetabl
 import { recordCrashReports } from "./crash-reports";
 import { evaluateCrashTriggers } from "./auto-triggers";
 import { issueBindingCode } from "./teacher-bindings";
+import { recordPluginUpdateReport } from "./plugin-updates";
+import { planPluginUpdateOffer } from "./plugin-release-delivery";
 
 export type DevicePollInput = z.infer<typeof pollSchema>;
 
@@ -72,8 +74,8 @@ export function processDevicePoll(
     }
     // 2) 新请求必须严格为 last+1。仅当序列等于 last（升级前的历史序列、尚未写入缓存）时，
     //    允许重算一次并补写缓存，避免老设备被卡死。
-    const current = db.prepare("SELECT last_sequence lastSequence, applied_policy_hash appliedPolicyHash, drift_count driftCount, transport transport, org_node_id orgNodeId FROM devices WHERE id=? AND disabled_at IS NULL")
-      .get(deviceId) as { lastSequence: number; appliedPolicyHash: string | null; driftCount: number; transport: string; orgNodeId: string | null } | undefined;
+    const current = db.prepare("SELECT last_sequence lastSequence, applied_policy_hash appliedPolicyHash, drift_count driftCount, transport transport, org_node_id orgNodeId, plugin_update_state pluginUpdateState, plugin_update_version pluginUpdateVersion FROM devices WHERE id=? AND disabled_at IS NULL")
+      .get(deviceId) as { lastSequence: number; appliedPolicyHash: string | null; driftCount: number; transport: string; orgNodeId: string | null; pluginUpdateState: string; pluginUpdateVersion: string } | undefined;
     if (!current) throw createError({ statusCode: 401, message: "未知或已禁用的设备。" });
     const isNextSequence = sequence === current.lastSequence + 1;
     const isLegacyRetry = sequence === current.lastSequence;
@@ -195,6 +197,27 @@ export function processDevicePoll(
       // 崩溃阈值触发器：新崩溃入库后当场评估，派生动作与本次 poll 同事务落库。
       if (ingested.accepted > 0) evaluateCrashTriggers(db, deviceId, seenAt);
     }
+    // 插件自升级：先记下设备回报的进度，再决定这一轮要不要给它一次下载凭据。
+    // 不回报就等于「本机没有升级动作」，与策略字段一样在这里统一兜底，别让缺省变成 null。
+    const reportedUpdateState = input.pluginUpdateState ?? "";
+    const reportedUpdateVersion = input.pluginUpdateVersion ?? "";
+    // 只在状态或版本真的变化时留审计事件，否则每 30 秒一次的轮询会把审计刷满；
+    // 只比状态是不够的——同一状态下换目标版本（staged 0.1.7 → staged 0.1.8）也得跟着记。
+    if (reportedUpdateState !== current.pluginUpdateState || reportedUpdateVersion !== current.pluginUpdateVersion) {
+      recordPluginUpdateReport(db, deviceId, reportedUpdateState, reportedUpdateVersion);
+      if (reportedUpdateState)
+        appendAuditWithin(db, {
+          actorType: "device", actorId: deviceId, action: "plugin.update.state", targetType: "device", targetId: deviceId,
+          summary: reportedUpdateState === "applied"
+            ? `插件已升级到 ${reportedUpdateVersion}`
+            : reportedUpdateState === "staged"
+              ? `插件 ${reportedUpdateVersion} 已就位，等待无课时重启`
+              : `插件升级到 ${reportedUpdateVersion} 失败`,
+          details: { state: reportedUpdateState, version: reportedUpdateVersion, pluginVersion: input.pluginVersion },
+        });
+    }
+    const pluginUpdate = planPluginUpdateOffer(db, deviceId, input.pluginVersion,
+      { state: reportedUpdateState, version: reportedUpdateVersion }, seenAt);
     // 教师绑定码：设备主动申请才签发，明文只出现在这次已签名的响应里，库里只留哈希。
     const bindingCode = input.bindingCodeRequested ? issueBindingCode(db, deviceId, seenAt) : null;
     const responseBody = JSON.stringify({
@@ -206,6 +229,8 @@ export function processDevicePoll(
       timetableRequired,
       // 绑定码有效期：设备据此决定屏上停留多久、何时再要一张。
       bindingCode,
+      // 插件自升级：目标版本与本机不一致时回一份限时限次的下载凭据，设备据此下载、校验、暂存并等空闲重启。
+      pluginUpdate,
       // 逐条回执：设备只删除被明确接受的 ACK，冲突结果保留并告警。
       acknowledgements: receipts,
       // 点名：仅在设备手上的修订过期时回带整份内容（名单 + 设置），避免每轮重复下发。

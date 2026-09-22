@@ -4,10 +4,10 @@
  */
 export const rolePermissions: Record<string, readonly string[]> = {
   owner: ["*"],
-  admin: ["dashboard.read", "devices.read", "enrollment.write", "devices.write", "binding.write", "organization.read", "organization.write", "policies.read", "policies.write", "configurations.read", "configurations.write", "timetable.apply", "tasks.read", "tasks.write", "audit.read", "system.read", "system.write", "users.read", "users.write", "rollcall.read", "rollcall.write", "crashes.read", "crashes.write"],
-  operator: ["dashboard.read", "devices.read", "devices.write", "binding.write", "tasks.read", "tasks.write", "audit.read", "rollcall.read", "crashes.read"],
-  auditor: ["audit.read", "crashes.read"],
-  viewer: ["dashboard.read", "devices.read", "organization.read", "policies.read", "configurations.read", "tasks.read", "system.read", "rollcall.read", "crashes.read"],
+  admin: ["dashboard.read", "devices.read", "enrollment.write", "devices.write", "binding.write", "organization.read", "organization.write", "policies.read", "policies.write", "configurations.read", "configurations.write", "timetable.apply", "tasks.read", "tasks.write", "audit.read", "system.read", "system.write", "users.read", "users.write", "rollcall.read", "rollcall.write", "crashes.read", "crashes.write", "plugins.read", "plugins.write"],
+  operator: ["dashboard.read", "devices.read", "devices.write", "binding.write", "tasks.read", "tasks.write", "audit.read", "rollcall.read", "crashes.read", "plugins.read"],
+  auditor: ["audit.read", "crashes.read", "plugins.read"],
+  viewer: ["dashboard.read", "devices.read", "organization.read", "policies.read", "configurations.read", "tasks.read", "system.read", "rollcall.read", "crashes.read", "plugins.read"],
   // 教师只能在绑定设备上点名与套用课表；能看到哪些设备由 device_teachers 决定。
   teacher: ["dashboard.read", "devices.read", "binding.write", "rollcall.read", "rollcall.write", "timetable.apply"],
 };

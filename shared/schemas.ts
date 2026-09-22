@@ -8,20 +8,26 @@ export const initializeSchema = z.object({
   password: z.string().min(12).max(128),
 });
 
+/** 接入凭据携带的绑定：组织、标签，以及注册时作为新设备策略底稿的那一份已发布修订。 */
+const enrollmentBindings = {
+  orgNodeId: z.string().uuid().nullable().optional(),
+  tagIds: z.array(z.string().uuid()).max(32).default([]),
+  /** 已发布策略修订的行 ID：新设备照它的内容落一条设备级策略；缺省表示不预设任何东西。 */
+  policyRevisionId: z.string().uuid().nullable().optional(),
+};
+
 export const enrollmentTokenSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("code"),
     ttlMinutes: z.number().int().min(5).max(1440),
-    orgNodeId: z.string().uuid().nullable().optional(),
-    tagIds: z.array(z.string().uuid()).max(32).default([]),
     maxUses: z.literal(1).default(1),
+    ...enrollmentBindings,
   }),
   z.object({
     kind: z.literal("bundle"),
     ttlMinutes: z.number().int().min(5).max(1440),
-    orgNodeId: z.string().uuid().nullable().optional(),
-    tagIds: z.array(z.string().uuid()).max(32).default([]),
     maxUses: z.number().int().min(2).max(1000),
+    ...enrollmentBindings,
   }),
 ]);
 
@@ -253,6 +259,131 @@ export const ciTimetableSchema = z.object({
   selectedClassPlanGroupId: z.string().max(64).optional(),
 }).passthrough();
 
+/**
+ * 插件静默升级的共享约束。
+ *
+ * 版本号同时是三件事：清单里的版本、服务端落盘的文件名、设备比对的目标，
+ * 所以规则只能有一份——放在这里，服务端存储、管理接口与界面都从这里取。
+ * 位置必须在 pollSchema 之前：轮询正文里的升级回报字段要用到下面这些常量。
+ */
+export const PLUGIN_RELEASE_VERSION_PATTERN = /^\d+\.\d+\.\d+\.\d+$/;
+/** 服务端只接收我们自己的插件包：id 写错的包会让宿主去覆盖另一个插件的目录。 */
+export const CONTROL_PLUGIN_ID = "tech.classisland.control";
+export const pluginVersionSchema = z.string().regex(PLUGIN_RELEASE_VERSION_PATTERN, {
+  message: "插件版本号需为四段数字，例如 0.1.7.0。",
+});
+/** .cipx 上限 25 MiB：当前包只有几百 KB，留足余量又挡住把数据目录写爆的上传。 */
+export const MAX_PLUGIN_RELEASE_BYTES = 25 * 1024 * 1024;
+export const MAX_PLUGIN_RELEASE_BASE64_CHARS = Math.ceil(MAX_PLUGIN_RELEASE_BYTES / 3) * 4;
+
+export const pluginReleaseUploadSchema = z.object({
+  fileName: z.string().trim().min(1).max(200),
+  contentBase64: z.string().min(1).max(MAX_PLUGIN_RELEASE_BASE64_CHARS).regex(/^[A-Za-z0-9+/]+={0,2}$/, {
+    message: "插件包内容不是有效的 base64。",
+  }),
+});
+
+/** 目标版本按作用域设置；null 表示取消这一层的表态，回落到上级作用域。 */
+export const pluginUpdateTargetSchema = z.discriminatedUnion("scopeType", [
+  z.object({ scopeType: z.literal("school"), version: pluginVersionSchema.nullable() }),
+  z.object({ scopeType: z.literal("organization"), scopeId: z.string().uuid(), version: pluginVersionSchema.nullable() }),
+  z.object({ scopeType: z.literal("tag"), scopeId: z.string().uuid(), version: pluginVersionSchema.nullable() }),
+  z.object({ scopeType: z.literal("device"), scopeId: z.string().uuid(), version: pluginVersionSchema.nullable() }),
+]);
+export type PluginUpdateTargetInput = z.infer<typeof pluginUpdateTargetSchema>;
+
+/**
+ * 上游版本检测的配置。检测只是「知道有新版本」，装不装仍由管理员点一下决定，
+ * 所以这里的字段全部是只读性质的元数据，碰不到设备的目标版本。
+ */
+export const PLUGIN_UPSTREAM_REPO_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
+export const PLUGIN_UPSTREAM_DEFAULT_REPO = "xlh0000000/classislan-super-control";
+/** 间隔下限 10 分钟：GitHub 未认证 API 每小时只有 60 次配额，巡检再密就是在替别人烧配额。 */
+export const PLUGIN_UPSTREAM_MIN_INTERVAL_MINUTES = 10;
+export const PLUGIN_UPSTREAM_MAX_INTERVAL_MINUTES = 1440;
+/** 前缀条数与单条长度都要封顶：这些字符串会直接拼进出站请求的 URL。 */
+export const MAX_PLUGIN_UPSTREAM_PROXIES = 8;
+export const MAX_PLUGIN_UPSTREAM_PROXY_LENGTH = 300;
+
+/**
+ * 镜像前缀必须是一条能直接拼在目标 URL 前面的 https 地址。
+ *
+ * 拒掉的两类：一是 http 与带账号/查询串的形式（拼出来的地址会被改写或截断），
+ * 二是内网地址与内网域名后缀——管理员填错一位就把服务端变成了一个能打自己内网的出口，
+ * 云主机的元数据服务（169.254.169.254）正是这类误配最常见的受害者。路径放过：不少镜像挂在子目录下。
+ * 这里只挡字面量，域名解析到内网仍然放过：那需要出站连接本身受限才算堵住，不在配置校验这一层。
+ */
+const PRIVATE_HOST_SUFFIXES = ["localhost", "local", "internal", "lan", "home"];
+function privateIpv4(host: string): string | null {
+  const match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (!match) return null;
+  const parts = match.slice(1).map(Number);
+  if (parts.some((part) => part > 255)) return "地址不是有效的 IPv4";
+  const [a, b] = parts as [number, number, number, number];
+  if (a === 0 || a === 10 || a === 127 || a >= 224) return "本机或内网地址";
+  if (a === 100 && b >= 64 && b <= 127) return "运营商级内网地址";
+  if (a === 169 && b === 254) return "链路本地或云元数据地址";
+  if (a === 172 && b >= 16 && b <= 31) return "内网地址";
+  if (a === 192 && b === 168) return "内网地址";
+  if (a === 192 && b === 0) return "内网地址";
+  if (a === 198 && (b === 18 || b === 19)) return "设备基准测试地址";
+  if (a >= 240) return "保留地址";
+  return null;
+}
+function privateIpv6(host: string): string | null {
+  const value = host.replace(/^\[|\]$/g, "").toLowerCase();
+  if (!value.includes(":")) return null;
+  if (value === "::" || value === "::1") return "本机地址";
+  if (/^::ffff:/.test(value)) return privateIpv4(value.slice(7));
+  if (/^f[cd]/.test(value)) return "内网唯一本地地址";
+  if (/^fe[89ab]/.test(value)) return "链路本地地址";
+  if (/^2[0-3]/.test(value)) return "组播地址";
+  return null;
+}
+export function pluginProxyPrefixError(value: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return "填写完整的镜像地址，例如 https://mirror.example.com/";
+  }
+  if (url.protocol !== "https:") return "镜像地址必须走 https";
+  if (url.username || url.password) return "镜像地址不能带账号密码";
+  if (url.search || url.hash) return "镜像地址不能带查询串或锚点";
+  const host = url.hostname.toLowerCase();
+  const v4 = privateIpv4(host);
+  if (v4) return `镜像地址不能指向内网（${v4}）`;
+  const v6 = privateIpv6(host);
+  if (v6) return `镜像地址不能指向内网（${v6}）`;
+  if (PRIVATE_HOST_SUFFIXES.some((suffix) => host === suffix || host.endsWith(`.${suffix}`)))
+    return "镜像地址不能指向内网域名";
+  return null;
+}
+/** 统一成可直接拼接的形式：GitHub 的代理镜像都认 `https://镜像/https://原地址` 这一种写法。 */
+export function normalizePluginProxyPrefix(value: string) {
+  const trimmed = value.trim();
+  return trimmed.endsWith("/") ? trimmed : `${trimmed}/`;
+}
+export const pluginProxyPrefixSchema = z.string().trim().min(1).max(MAX_PLUGIN_UPSTREAM_PROXY_LENGTH)
+  .refine((value) => pluginProxyPrefixError(value) === null, { message: "镜像地址不合法" });
+export const pluginUpstreamConfigSchema = z.object({
+  enabled: z.boolean(),
+  repo: z.string().trim().regex(PLUGIN_UPSTREAM_REPO_PATTERN, { message: "仓库要写成 owner/name 的形式。" }),
+  proxies: z.array(pluginProxyPrefixSchema).max(MAX_PLUGIN_UPSTREAM_PROXIES),
+  intervalMinutes: z.number().int().min(PLUGIN_UPSTREAM_MIN_INTERVAL_MINUTES).max(PLUGIN_UPSTREAM_MAX_INTERVAL_MINUTES),
+});
+export type PluginUpstreamConfigInput = z.infer<typeof pluginUpstreamConfigSchema>;
+/** 拉取入库只认检测结果里那一版：管理员不能借这个入口去下任意 release 的附件。 */
+export const pluginUpstreamImportSchema = z.object({ version: pluginVersionSchema });
+export type PluginUpstreamImportInput = z.infer<typeof pluginUpstreamImportSchema>;
+
+/**
+ * 设备回报的自升级状态：空串是本机没有升级动作，staged 是包已就位、等没课再重启，
+ * applied 是重启后第一次上报（用来确认「真换成了新版本」而不是只下载完），failed 交给界面提示人工介入。
+ */
+export const pluginUpdateStates = ["", "staged", "applied", "failed"] as const;
+export type PluginUpdateState = (typeof pluginUpdateStates)[number];
+
 export const pollSchema = z.object({
   deviceId: z.string().uuid(),
   sequence: z.number().int().nonnegative(),
@@ -289,6 +420,9 @@ export const pollSchema = z.object({
   timetable: ciTimetableSchema.optional(),
   // 索取一次性教师绑定码：设备准备在屏上出示时才申请，服务端只存哈希、明文随签名响应回本机。
   bindingCodeRequested: z.boolean().default(false),
+  // 插件自升级进度：包已暂存待重启 / 已升完 / 失败，连同对应目标版本一起回报，服务端据此停止重复下发。
+  pluginUpdateState: z.enum(pluginUpdateStates).default(""),
+  pluginUpdateVersion: z.string().max(32).default(""),
 });
 export const configurationKinds = ["profile", "components", "automation", "plugin", "settings"] as const;
 export type ConfigurationKind = (typeof configurationKinds)[number];
@@ -412,6 +546,7 @@ export const rollCallSettingsSchema = z.object({
   scopeType: z.enum(["school", "organization", "device"]),
   scopeId: z.string().uuid().nullable().optional(),
   enabled: z.boolean().nullish(),
+  multiEnabled: z.boolean().nullish(),
   notify: z.boolean().nullish(),
   singleSeconds: z.number().int().min(1).max(120).nullish(),
   multiSeconds: z.number().int().min(2).max(300).nullish(),
@@ -422,7 +557,8 @@ export const rollCallSettingsSchema = z.object({
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["scopeId"], message: "该作用域必须指定目标。" });
   }
   // 一项都不表态等于把这行的内容清空，应落到删除该行，而不是留下一条永不生效的记录。
-  if (value.enabled === undefined && value.notify === undefined && value.singleSeconds === undefined && value.multiSeconds === undefined)
+  const stated = [value.enabled, value.multiEnabled, value.notify, value.singleSeconds, value.multiSeconds];
+  if (stated.every((item) => item === undefined))
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: "至少要表态一项点名设置。" });
 });
 
@@ -432,6 +568,7 @@ export const rollCallSettingsSchema = z.object({
  */
 export const rollCallSettingFields = [
   { key: "enabled", kind: "switch", label: "点名悬浮窗", hint: "关掉后设备上的点名窗直接不见。", on: "显示", off: "隐藏" },
+  { key: "multiEnabled", kind: "switch", label: "「多人」按钮", hint: "关掉后窗上只留「抽人」一颗，一次只抽一个。", on: "显示", off: "隐藏" },
   { key: "notify", kind: "switch", label: "抽中时提醒", hint: "抽到人后同时拉起一条提醒。", on: "提醒", off: "不提醒" },
   { key: "singleSeconds", kind: "number", label: "单人停留秒数", hint: "“抽人”结果停留的时间。", min: 1, max: 120 },
   { key: "multiSeconds", kind: "number", label: "多人停留秒数", hint: "“多人”抽 2 人停留的时间，每多一人再加 1 秒。", min: 2, max: 300 },

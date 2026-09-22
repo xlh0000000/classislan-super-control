@@ -78,6 +78,13 @@ export function hasLockedDescendant(pointer: string, locks: string[]): boolean {
   return locks.some((lock) => lock.startsWith(`${pointer}/`));
 }
 
+/** 只带一个 $config 键的对象 = 对配置库某条目的整节引用，展开时替换整棵子树。 */
+export function isConfigReference(value: unknown): value is { $config: string } {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return typeof record.$config === "string" && Object.keys(record).length === 1;
+}
+
 function merge(
   target: Record<string, unknown>,
   source: Record<string, unknown>,
@@ -91,6 +98,12 @@ function merge(
     // 数组整体替换同样会删除锁定的后代，因此一并跳过。
     if (hasLockedDescendant(pointer, locks) && (value === null || typeof value !== "object" || Array.isArray(value)))
       continue;
+    // 整节引用必须整体替换：把它合并进下层同节的字面量里，多出的键会让引用不再成立，
+    // 设备于是既拿不到引用的配置、也看不出为什么。下层有锁定后代时不这样做，交给递归合并守锁。
+    if (isConfigReference(value) && !hasLockedDescendant(pointer, locks)) {
+      target[key] = value;
+      continue;
+    }
     if (value && typeof value === "object" && !Array.isArray(value)) {
       const current = target[key];
       target[key] = current && typeof current === "object" && !Array.isArray(current) ? current : {};
@@ -230,6 +243,30 @@ export type PolicyPublishResult = {
   scopeId: string | null;
 };
 
+/** 下一枚全局单调的策略修订号；调用方须在同一事务内紧接着写入该修订。 */
+function nextPolicyRevision(db: Database.Database): number {
+  return (db.prepare("SELECT COALESCE(MAX(revision),0) value FROM policy_revisions").get() as { value: number }).value + 1;
+}
+
+type ActiveRevisionWrite = {
+  revisionId: string; assignmentId: string; revision: number; name: string;
+  serialized: string; documentHash: string; baseRevision: number | null; createdBy: string | null;
+  mode: "replace" | "append"; scopeType: PolicyLayer["scopeType"]; scopeId: string | null; scopeKey: string;
+  priority: number; locks: string[]; now: string;
+};
+
+/** 落一条策略修订，并把该作用域的有效指针挪到它上面；同一作用域复用一个稳定的 assignment 行。 */
+function insertActiveRevision(db: Database.Database, input: ActiveRevisionWrite) {
+  // 作用域与锁同时记在修订上：assignment 行是复用的，只留着当前这一条，历史得由修订自己认领。
+  db.prepare("INSERT INTO policy_revisions (id,revision,name,document,document_hash,base_revision,created_by,created_at,mode,scope_type,scope_id,locks) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
+    .run(input.revisionId, input.revision, input.name, input.serialized, input.documentHash, input.baseRevision, input.createdBy, input.now, input.mode, input.scopeType, input.scopeId, JSON.stringify(input.locks));
+  db.prepare(`INSERT INTO policy_assignments (id,policy_revision_id,scope_type,scope_id,scope_key,priority,locks,created_at,superseded_at)
+    VALUES (?,?,?,?,?,?,?,?,NULL)
+    ON CONFLICT(scope_type, scope_key) WHERE superseded_at IS NULL
+    DO UPDATE SET policy_revision_id=excluded.policy_revision_id, priority=excluded.priority, locks=excluded.locks, created_at=excluded.created_at`)
+    .run(input.assignmentId, input.revisionId, input.scopeType, input.scopeId, input.scopeKey, input.priority, JSON.stringify(input.locks), input.now);
+}
+
 /**
  * 发布策略：目标存在性、调用者范围、CAS 基线与写入全部在同一个事务内完成。
  * 同一作用域复用一个稳定的 assignment 行（唯一 active revision），旧修订仅作为历史保留。
@@ -285,17 +322,15 @@ export function publishPolicy(
     const serialized = JSON.stringify(document);
     const documentHash = sha256(serialized);
 
-    const current = db.prepare("SELECT COALESCE(MAX(revision),0) value FROM policy_revisions").get() as { value: number };
-    const nextRevision = current.value + 1;
+    const nextRevision = nextPolicyRevision(db);
     const revisionId = randomUUID();
     const assignmentId = existing?.assignmentId ?? randomUUID();
-    db.prepare("INSERT INTO policy_revisions (id,revision,name,document,document_hash,base_revision,created_by,created_at,mode) VALUES (?,?,?,?,?,?,?,?,?)")
-      .run(revisionId, nextRevision, input.name, serialized, documentHash, input.baseRevision ?? null, actor.id, now, mode);
-    db.prepare(`INSERT INTO policy_assignments (id,policy_revision_id,scope_type,scope_id,scope_key,priority,locks,created_at,superseded_at)
-      VALUES (?,?,?,?,?,?,?,?,NULL)
-      ON CONFLICT(scope_type, scope_key) WHERE superseded_at IS NULL
-      DO UPDATE SET policy_revision_id=excluded.policy_revision_id, priority=excluded.priority, locks=excluded.locks, created_at=excluded.created_at`)
-      .run(assignmentId, revisionId, input.scopeType, input.scopeId, scopeKey, input.priority, JSON.stringify(locks), now);
+    insertActiveRevision(db, {
+      revisionId, assignmentId, revision: nextRevision, name: input.name,
+      serialized, documentHash, baseRevision: input.baseRevision ?? null, createdBy: actor.id,
+      mode, scopeType: input.scopeType, scopeId: input.scopeId, scopeKey,
+      priority: input.priority, locks, now,
+    });
     const epoch = bumpDesiredStateEpoch(db, now);
     appendAuditWithin(db, {
       actorType: "user", actorId: actor.id, action: "policy.publish", targetType: "policy_revision", targetId: revisionId,
@@ -308,6 +343,41 @@ export function publishPolicy(
   })();
 }
 
+/** 接入凭据绑定的源策略：注册时以这份修订的文档与锁作为设备级策略的底稿。 */
+export type EnrollmentPresetSource = { revision: number; name: string; document: Record<string, unknown>; locks: string[] };
+
+/**
+ * 按接入凭据绑定的那份策略修订，为刚注册的设备写一条 device 作用域策略。
+ *
+ * 底稿就是那份修订的文档，锁一并带过来，之后设备级仍可单独覆盖；要在接入时就带上
+ * 某份课表，做法是在源策略里按节引用配置库条目（{ 节名: { "$config": 配置ID } }），
+ * 轮询时由 materializeConfigReferences 展开为配置本体——凭据自己不再拼配置。
+ *
+ * 与 publishPolicy 的唯一区别是没有可交互的管理员会话：作用域校验无从谈起，
+ * 但设备行正是本次注册在同一事务里创建的，天然属于自己。修订号、assignment
+ * 复用、epoch 推进与审计都走同一套写入，因此这份预设之后可在设备详情里继续编辑覆盖。
+ */
+export function publishEnrollmentPreset(db: Database.Database, deviceId: string, source: EnrollmentPresetSource, createdBy: string | null, now = nowIso()): number {
+  const document = structuredClone(source.document);
+  const locks = normalizePointers(source.locks);
+  const serialized = JSON.stringify(document);
+  const revision = nextPolicyRevision(db);
+  insertActiveRevision(db, {
+    revisionId: randomUUID(), assignmentId: randomUUID(), revision,
+    name: `接入下发 · ${source.name}`,
+    serialized, documentHash: sha256(serialized), baseRevision: 0, createdBy,
+    mode: "replace", scopeType: "device", scopeId: deviceId, scopeKey: deviceId,
+    priority: 0, locks, now,
+  });
+  const epoch = bumpDesiredStateEpoch(db, now);
+  appendAuditWithin(db, {
+    actorType: "system", action: "policy.enroll_preset", targetType: "device", targetId: deviceId,
+    summary: `按接入凭据为设备预下发策略 第 ${source.revision} 版「${source.name}」`,
+    details: { revision, epoch, sourceRevision: source.revision, locks },
+  });
+  return revision;
+}
+
 /**
  * 将策略文档中的 { "$config": "配置ID" } 叶子就地替换为配置库当前文档。
  * 支持顶层 { "$config": "..." } 以及任意嵌套位置。
@@ -316,8 +386,8 @@ export function materializeConfigReferences(node: unknown, seen = new Set<string
   if (!node || typeof node !== "object") return node;
   if (Array.isArray(node)) return node.map((item) => materializeConfigReferences(item, seen));
   const record = node as Record<string, unknown>;
-  if (typeof record["$config"] === "string" && Object.keys(record).length === 1) {
-    const configurationId = record["$config"] as string;
+  if (isConfigReference(record)) {
+    const configurationId = record.$config;
     if (seen.has(configurationId)) throw new Error(`配置引用形成循环: ${configurationId}`);
     const db = useDatabase();
     const row = db.prepare(`SELECT cr.document FROM configurations c JOIN configuration_revisions cr ON cr.id=c.current_revision_id WHERE c.id=?`).get(configurationId) as { document: string } | undefined;
@@ -330,4 +400,86 @@ export function materializeConfigReferences(node: unknown, seen = new Set<string
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(record)) result[key] = materializeConfigReferences(value, seen);
   return result;
+}
+
+/** 卡片墙上一路作用域的当前处境：锁只报条数，节名列表够用来判断「这一路管到哪几节」。 */
+export type PolicyScopeCurrent = {
+  revisionId: string; revision: number; name: string; mode: string; priority: number; createdAt: string;
+  sections: string[]; lockCount: number;
+};
+
+export type PolicyScopeOverview = { scopeType: string; scopeId: string | null; historyCount: number; current: PolicyScopeCurrent | null };
+
+/**
+ * 按作用域聚合策略现状。
+ *
+ * 分组以 policy_revisions 自己认领的作用域为准：修订表是按版本倒序的流水账，管理员要看的
+ * 「这一路现在跑第几版」混在里面找不到，而 assignment 行每个作用域只留当前一条，数不出历史。
+ * current 取该作用域那条未顶替的挂法；理论上至多一条，真出现多条时取版本号最大的，不让视图同时显示两个「当前」。
+ */
+export function policyScopeOverviews(db: Database.Database): PolicyScopeOverview[] {
+  const groups = db.prepare(`SELECT scope_type scopeType,scope_id scopeId,COUNT(*) historyCount
+    FROM policy_revisions WHERE scope_type IS NOT NULL GROUP BY scope_type,COALESCE(scope_id,'')`).all() as
+    { scopeType: string; scopeId: string | null; historyCount: number }[];
+  const currents = db.prepare(`SELECT pa.scope_type scopeType,pa.scope_id scopeId,pa.priority,pa.locks,
+      pr.id revisionId,pr.revision,pr.name,pr.mode,pr.document,pr.created_at createdAt
+    FROM policy_assignments pa JOIN policy_revisions pr ON pr.id=pa.policy_revision_id
+    WHERE pa.superseded_at IS NULL`).all() as {
+    scopeType: string; scopeId: string | null; priority: number; locks: string;
+    revisionId: string; revision: number; name: string; mode: string; document: string; createdAt: string;
+  }[];
+  const byScope = new Map<string, PolicyScopeOverview>();
+  for (const group of groups) {
+    byScope.set(`${group.scopeType}:${group.scopeId ?? ""}`, { ...group, current: null });
+  }
+  for (const row of currents) {
+    const key = `${row.scopeType}:${row.scopeId ?? ""}`;
+    const known = byScope.get(key);
+    if (!known) continue;
+    if (known.current && known.current.revision >= row.revision) continue;
+    known.current = {
+      revisionId: row.revisionId,
+      revision: row.revision,
+      name: row.name,
+      mode: row.mode,
+      priority: row.priority,
+      createdAt: row.createdAt,
+      // 卡片只需知道管到哪几节，引用展不展开是设备端取用时的，所以只回顶层节名。
+      sections: Object.keys(JSON.parse(row.document) as Record<string, unknown>),
+      lockCount: (JSON.parse(row.locks) as string[]).length,
+    };
+  }
+  return [...byScope.values()];
+}
+
+export type PolicyScopeHistoryRow = {
+  id: string; revision: number; name: string; mode: string; priority: number | null;
+  sections: string[]; locks: string[]; createdAt: string; createdByName: string | null; isCurrent: boolean; documentHash: string;
+};
+
+/**
+ * 一路作用域挂过的每一版，按版本倒序。
+ *
+ * 优先级挂在 assignment 上且会被后一版覆盖，所以只有当前生效那一版还答得上来，
+ * 其余留 null——宁可显示空白，也不把现在的优先级标在旧版本上。锁自 0025 起随修订存档，
+ * 每一版都答得上自己当时锁了哪几处，「沿用某一份历史修订」要接的就是这份。
+ * 文档本体换成顶层节名：列表要回答的是「这一版管了什么」，内容细节仍由详情接口给。
+ */
+export function policyScopeHistory(db: Database.Database, scopeType: string, scopeId: string | null): PolicyScopeHistoryRow[] {
+  const rows = db.prepare(`SELECT pr.id,pr.revision,pr.name,pr.mode,pr.document,pr.document_hash documentHash,pr.locks,
+      pr.created_at createdAt,u.display_name createdByName,pa.priority,pa.id assignmentId
+    FROM policy_revisions pr
+    LEFT JOIN users u ON u.id=pr.created_by
+    LEFT JOIN policy_assignments pa ON pa.policy_revision_id=pr.id AND pa.superseded_at IS NULL
+    WHERE pr.scope_type=? AND COALESCE(pr.scope_id,'')=?
+    ORDER BY pr.revision DESC`).all(scopeType, scopeId ?? "") as {
+    id: string; revision: number; name: string; mode: string; document: string; documentHash: string; locks: string | null;
+    createdAt: string; createdByName: string | null; priority: number | null; assignmentId: string | null;
+  }[];
+  return rows.map(({ document, assignmentId, locks, ...row }) => ({
+    ...row,
+    isCurrent: assignmentId !== null,
+    sections: Object.keys(JSON.parse(document) as Record<string, unknown>),
+    locks: JSON.parse(locks ?? "[]") as string[],
+  }));
 }

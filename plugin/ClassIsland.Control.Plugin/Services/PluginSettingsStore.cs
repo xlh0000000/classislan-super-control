@@ -18,6 +18,8 @@ public sealed record PluginSettings
 
     /// <summary>点名悬浮窗：是否常驻显示。名单优先用集控端下发的，见 <see cref="RollCallLocalNames"/>。</summary>
     public bool RollCallEnabled { get; init; }
+    /// <summary>悬浮窗上是否出现「多人」那颗按钮；关掉只剩「抽人」，一次只抽一个。</summary>
+    public bool RollCallMultiEnabled { get; init; } = true;
     /// <summary>悬浮窗宽度（逻辑像素）。</summary>
     public double RollCallWidth { get; init; } = 260;
     /// <summary>悬浮窗高度（逻辑像素）。</summary>
@@ -48,6 +50,14 @@ public sealed record CommandJournalEntry(string CommandId, string CapabilityId, 
 /// <summary>待执行的解除请求：回执必须先送达服务端，之后才清空本地身份。</summary>
 public sealed record PendingRelease(string CommandId, string? Reason = null);
 
+/// <summary>
+/// 插件自升级进度。必须落盘：暂存完成后重启的是整个宿主进程，本插件会随之消失，
+/// 新进程只能从 state.json 里知道「这份包是我暂存的、还没确认升完」。
+/// State 与服务端同一套：空=本机没有升级动作，staged=包已就位等没课重启，applied=重启后首次上报，failed=需要人工看。
+/// Attempts 只用于失败退避：同一个版本连撞几次就安静一段时间，不再反复下载。
+/// </summary>
+public sealed record PluginUpdateProgress(string State = "", string Version = "", int Attempts = 0);
+
 public sealed record AgentState
 {
     public string DeviceId { get; init; } = "";
@@ -71,6 +81,8 @@ public sealed record AgentState
     /// <summary>集控端已下发解除；等回执被接收后由轮询循环执行。</summary>
     public PendingRelease? PendingRelease { get; init; }
     public List<CommandJournalEntry> Journal { get; init; } = [];
+    /// <summary>插件自升级进度，见 <see cref="PluginUpdateProgress"/>。</summary>
+    public PluginUpdateProgress PluginUpdate { get; init; } = new();
 }
 
 /// <summary>
@@ -228,6 +240,8 @@ public sealed class PluginSettingsStore
                 Sequence = 0, PolicyRevision = 0, PolicyEpoch = 0, LastPolicyHash = "",
                 AppliedSections = [], PendingAcknowledgements = [], CompletedCommands = [],
                 Journal = [], PendingPoll = null, PendingRelease = null, DriftCount = 0,
+                // 解除后不再替前任集控端装包：进度清空，留下的暂存文件永远不会被挪进宿主安装目录。
+                PluginUpdate = new(),
             };
             await WriteAtomicAsync(_paths.State, state, cancellationToken);
             var settings = Settings with { EnrollmentToken = "" };

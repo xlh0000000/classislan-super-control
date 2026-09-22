@@ -6,9 +6,10 @@ import { assertDeviceInScope, assertOrgNodeInScope, deviceScopeFilter, hasSchool
 
 export type RollCallScopeType = "school" | "organization" | "device";
 
-/** 点名设置的四个可选项；null 表示这一层不表态，继续向外继承。 */
+/** 点名设置的五个可选项；null 表示这一层不表态，继续向外继承。 */
 export type RollCallSettings = {
   enabled: boolean | null;
+  multiEnabled: boolean | null;
   notify: boolean | null;
   singleSeconds: number | null;
   multiSeconds: number | null;
@@ -193,7 +194,7 @@ function toIntFlag(value: boolean | null | undefined): number | null {
   return value ? 1 : 0;
 }
 
-const SETTINGS_COLUMNS = `id,scope_type scopeType,scope_id scopeId,enabled,notify,
+const SETTINGS_COLUMNS = `id,scope_type scopeType,scope_id scopeId,enabled,multi_enabled multiEnabled,notify,
   single_seconds singleSeconds,multi_seconds multiSeconds,revision,updated_at updatedAt`;
 
 type SettingsRow = {
@@ -201,6 +202,7 @@ type SettingsRow = {
   scopeType: RollCallScopeType;
   scopeId: string | null;
   enabled: number | null;
+  multiEnabled: number | null;
   notify: number | null;
   singleSeconds: number | null;
   multiSeconds: number | null;
@@ -213,6 +215,7 @@ function mapSettings(row: SettingsRow): RollCallSettingsRow {
     scopeType: row.scopeType,
     scopeId: row.scopeId,
     enabled: row.enabled === null ? null : row.enabled === 1,
+    multiEnabled: row.multiEnabled === null ? null : row.multiEnabled === 1,
     notify: row.notify === null ? null : row.notify === 1,
     singleSeconds: row.singleSeconds,
     multiSeconds: row.multiSeconds,
@@ -243,6 +246,7 @@ function scopeTargetName(db: Database.Database, scopeType: RollCallScopeType, sc
 function settingsSummary(settings: RollCallSettings): string[] {
   const parts: string[] = [];
   if (settings.enabled !== null) parts.push(`悬浮窗${settings.enabled ? "开启" : "关闭"}`);
+  if (settings.multiEnabled !== null) parts.push(`多人按钮${settings.multiEnabled ? "显示" : "隐藏"}`);
   if (settings.notify !== null) parts.push(`提醒${settings.notify ? "开" : "关"}`);
   if (settings.singleSeconds !== null) parts.push(`单人 ${settings.singleSeconds} 秒`);
   if (settings.multiSeconds !== null) parts.push(`多人 ${settings.multiSeconds} 秒`);
@@ -251,22 +255,24 @@ function settingsSummary(settings: RollCallSettings): string[] {
 
 /**
  * 按作用域覆盖式写入点名设置：一次提交代表这一行的全部内容，
- * 缺省或 null 的字段即“不表态”，向外层继续继承。四项全不表态时删除该行，
+ * 缺省或 null 的字段即“不表态”，向外层继续继承。五项全不表态时删除该行，
  * 留下一行空记录只会让“这一层存在但什么都不管”变得难以判断。
  */
 export function upsertRollCallSettings(
   db: Database.Database,
   user: ScopeUser,
-  input: { scopeType: RollCallScopeType; scopeId: string | null; enabled?: boolean | null; notify?: boolean | null; singleSeconds?: number | null; multiSeconds?: number | null },
+  input: { scopeType: RollCallScopeType; scopeId: string | null; enabled?: boolean | null; multiEnabled?: boolean | null; notify?: boolean | null; singleSeconds?: number | null; multiSeconds?: number | null },
 ): RollCallSettingsRow | null {
   const scopeId = input.scopeType === "school" ? null : input.scopeId;
   const settings: RollCallSettings = {
     enabled: input.enabled ?? null,
+    multiEnabled: input.multiEnabled ?? null,
     notify: input.notify ?? null,
     singleSeconds: input.singleSeconds ?? null,
     multiSeconds: input.multiSeconds ?? null,
   };
-  const isClear = settings.enabled === null && settings.notify === null && settings.singleSeconds === null && settings.multiSeconds === null;
+  const isClear = settings.enabled === null && settings.multiEnabled === null && settings.notify === null
+    && settings.singleSeconds === null && settings.multiSeconds === null;
   return db.transaction(() => {
     assertScopeTarget(db, user, input.scopeType, scopeId);
     const existing = findSettings(db, input.scopeType, scopeId);
@@ -286,12 +292,12 @@ export function upsertRollCallSettings(
     const id = existing?.id ?? randomUUID();
     const revision = allocateRevision(db);
     const timestamp = nowIso();
-    db.prepare(`INSERT INTO rollcall_settings (id,scope_type,scope_id,enabled,notify,single_seconds,multi_seconds,revision,updated_at)
-      VALUES (?,?,?,?,?,?,?,?,?)
+    db.prepare(`INSERT INTO rollcall_settings (id,scope_type,scope_id,enabled,multi_enabled,notify,single_seconds,multi_seconds,revision,updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?)
       ON CONFLICT(id) DO UPDATE SET scope_type=excluded.scope_type,scope_id=excluded.scope_id,enabled=excluded.enabled,
-        notify=excluded.notify,single_seconds=excluded.single_seconds,multi_seconds=excluded.multi_seconds,
+        multi_enabled=excluded.multi_enabled,notify=excluded.notify,single_seconds=excluded.single_seconds,multi_seconds=excluded.multi_seconds,
         revision=excluded.revision,updated_at=excluded.updated_at`)
-      .run(id, input.scopeType, scopeId, toIntFlag(settings.enabled), toIntFlag(settings.notify), settings.singleSeconds, settings.multiSeconds, revision, timestamp);
+      .run(id, input.scopeType, scopeId, toIntFlag(settings.enabled), toIntFlag(settings.multiEnabled), toIntFlag(settings.notify), settings.singleSeconds, settings.multiSeconds, revision, timestamp);
     appendAuditWithin(db, {
       actorType: "user", actorId: user.id, action: "rollcall.settings.save", targetType: "rollcall_settings", targetId: id,
       summary: `${target}的点名设置已保存（${settingsSummary(settings).join("、")}）`,
@@ -320,16 +326,22 @@ function deviceRollCallChain(db: Database.Database, deviceId: string): { scopeTy
 
 /** 沿作用域链逐字段就近取点名设置：某一层没表态的字段继续向外层找。 */
 function resolveSettingsAlongChain(db: Database.Database, chain: { scopeType: RollCallScopeType; scopeId: string | null }[]) {
-  const settings: RollCallSettings = { enabled: null, notify: null, singleSeconds: null, multiSeconds: null };
-  const sources: Record<keyof RollCallSettings, RollCallSettingSource> = { enabled: "local", notify: "local", singleSeconds: "local", multiSeconds: "local" };
+  const settings: RollCallSettings = { enabled: null, multiEnabled: null, notify: null, singleSeconds: null, multiSeconds: null };
+  const sources: Record<keyof RollCallSettings, RollCallSettingSource> = {
+    enabled: "local", multiEnabled: "local", notify: "local", singleSeconds: "local", multiSeconds: "local",
+  };
   let deviceOverride: RollCallSettings | null = null;
   for (const scope of chain) {
     const row = findSettings(db, scope.scopeType, scope.scopeId);
     if (!row) continue;
     const current = mapSettings(row);
     if (scope.scopeType === "device")
-      deviceOverride = { enabled: current.enabled, notify: current.notify, singleSeconds: current.singleSeconds, multiSeconds: current.multiSeconds };
+      deviceOverride = {
+        enabled: current.enabled, multiEnabled: current.multiEnabled, notify: current.notify,
+        singleSeconds: current.singleSeconds, multiSeconds: current.multiSeconds,
+      };
     if (settings.enabled === null && current.enabled !== null) { settings.enabled = current.enabled; sources.enabled = scope.scopeType; }
+    if (settings.multiEnabled === null && current.multiEnabled !== null) { settings.multiEnabled = current.multiEnabled; sources.multiEnabled = scope.scopeType; }
     if (settings.notify === null && current.notify !== null) { settings.notify = current.notify; sources.notify = scope.scopeType; }
     if (settings.singleSeconds === null && current.singleSeconds !== null) { settings.singleSeconds = current.singleSeconds; sources.singleSeconds = scope.scopeType; }
     if (settings.multiSeconds === null && current.multiSeconds !== null) { settings.multiSeconds = current.multiSeconds; sources.multiSeconds = scope.scopeType; }

@@ -1,4 +1,5 @@
 import { assertDeviceInScope, assertOrgNodeInScope } from "../../../../../utils/scope";
+import { deleteDevicePluginUpdateTargets } from "../../../../../utils/plugin-updates";
 export default defineEventHandler(async (event) => {
   const user = event.context.user as { id: string; role: string; scopeOrgNodeId?: string | null };
   requirePermission(user, "devices.write");
@@ -12,6 +13,8 @@ export default defineEventHandler(async (event) => {
       database.prepare("DELETE FROM device_tags WHERE device_id=?").run(id);
       database.prepare("DELETE FROM commands WHERE device_id=?").run(id);
       database.prepare("DELETE FROM capability_snapshots WHERE device_id=?").run(id);
+      // 设备级升级目标挂的是多态 scope_id，外键管不到，只能跟着设备一起删。
+      deleteDevicePluginUpdateTargets(database, id);
       database.prepare("DELETE FROM devices WHERE id=?").run(id);
       return id;
     },

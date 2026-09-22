@@ -18,6 +18,7 @@ public sealed class AgentStatus
     private string _timeOffsetSummary = "";
     private string _timetableSummary = "";
     private string _crashSummary = "";
+    private string _updateSummary = "";
     private bool _syncing;
     private bool _locked;
 
@@ -43,6 +44,8 @@ public sealed class AgentStatus
     public string TimetableSummary { get { lock (_gate) return _timetableSummary; } }
     /// <summary>崩溃上报概览；空串表示尚未统计。</summary>
     public string CrashSummary { get { lock (_gate) return _crashSummary; } }
+    /// <summary>插件自升级说明；空串表示本机没有升级动作。</summary>
+    public string UpdateSummary { get { lock (_gate) return _updateSummary; } }
     public long PolicyEpoch { get { lock (_gate) return _policyEpoch; } }
     public IReadOnlyDictionary<string, string> AppliedSections { get { lock (_gate) return new Dictionary<string, string>(_appliedSections); } }
 
@@ -74,6 +77,7 @@ public sealed class AgentStatus
             _timeOffsetSummary = "";
             _timetableSummary = "";
             _crashSummary = "";
+            _updateSummary = "";
             _policyError = "";
             _lastError = "";
             _note = "集控端已解除接入，可重新配置";
@@ -118,6 +122,13 @@ public sealed class AgentStatus
     public void CrashUpdated(string summary)
     {
         lock (_gate) _crashSummary = summary;
+        Changed?.Invoke();
+    }
+
+    /// <summary>记录插件自升级进度说明。</summary>
+    public void UpdateUpdated(string summary)
+    {
+        lock (_gate) _updateSummary = summary;
         Changed?.Invoke();
     }
 

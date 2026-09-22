@@ -4,7 +4,7 @@ const {
   toggleSchool, toggleOrg, toggleTag, toggleDevice, clear,
 } = useTargetSelection();
 
-// compact：嵌入下发面板时使用，去掉标题与外层说明，只保留可选择的目标列表。
+// compact：嵌入目标选择对话框时使用，去掉标题与外层说明，只保留可选择的目标列表。
 const { compact = false } = defineProps<{ compact?: boolean }>();
 
 const query = ref("");

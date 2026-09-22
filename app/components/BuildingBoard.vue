@@ -14,12 +14,14 @@ const props = withDefaults(defineProps<{
   selectable?: boolean;
 }>(), { selectable: true });
 const emit = defineEmits<{ toggle: [ids: string[]]; marquee: [ids: string[], additive: boolean]; openRoom: [id: string]; inspect: [id: string]; changed: [] }>();
+/** 当前楼栋由页面持有：工具栏的「全选本楼栋」要知道看的是哪一栋。 */
+const activeId = defineModel<string | null>("activeBuilding", { default: null });
 const toast = useToast();
 const { can } = useSession();
 /** 楼栋结构增删改走的是 devices.write，没这条权限的账号点了只会拿到 403。 */
 const canEdit = computed(() => can("devices.write"));
 
-const activeId = ref<string | null>(null);
+const active = computed(() => props.buildings.find((building) => building.id === activeId.value) ?? null);
 watch(
   () => props.buildings,
   (list) => {
@@ -28,7 +30,6 @@ watch(
   },
   { immediate: true },
 );
-const active = computed(() => props.buildings.find((building) => building.id === activeId.value) ?? null);
 const deviceById = computed(() => new Map(props.devices.map((device) => [device.id, device])));
 const floors = computed(() => props.floors.filter((floor) => floor.buildingId === active.value?.id));
 const roomsOf = (floorId: string) => props.rooms.filter((room) => room.floorId === floorId);

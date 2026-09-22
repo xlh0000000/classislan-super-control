@@ -326,9 +326,9 @@ async function runUnbind(teacher: BoundTeacher) {
 const ROLLCALL_SCOPE_LABELS: Record<string, string> = {
   school: "全校默认", organization: "组织默认", device: "本机覆盖", none: "还没指派",
 };
-const EMPTY_DRAFT: RollCallSettingsDraft = { enabled: null, notify: null, singleSeconds: null, multiSeconds: null };
+const EMPTY_DRAFT: RollCallSettingsDraft = { enabled: null, multiEnabled: null, notify: null, singleSeconds: null, multiSeconds: null };
 
-/** 这一台设备的点名现状：名单与四项设置各自按 本机 > 组织 > 全校 继承。 */
+/** 这一台设备的点名现状：名单与五项设置各自按 本机 > 组织 > 全校 继承。 */
 type RollCallState = {
   revision: number; names: string[]; scopeType: "school" | "organization" | "device" | "none"; rosterId: string | null;
   settings: RollCallSettingsDraft;
@@ -400,7 +400,7 @@ async function removeRoster() {
   finally { rollCallBusy.value = false; }
 }
 
-/** 保存本机覆盖：四项全不表态等于清除覆盖，交还给上级与设备本机设置。 */
+/** 保存本机覆盖：五项全不表态等于清除覆盖，交还给上级与设备本机设置。 */
 async function saveSettings(clear = false) {
   const device = selected.value;
   if (!device || rollCallBusy.value) return;
@@ -412,6 +412,7 @@ async function saveSettings(clear = false) {
       body: {
         scopeType: "device", scopeId: device.id,
         enabled: clear ? null : draft.enabled,
+        multiEnabled: clear ? null : draft.multiEnabled,
         notify: clear ? null : draft.notify,
         singleSeconds: clear ? null : draft.singleSeconds,
         multiSeconds: clear ? null : draft.multiSeconds,

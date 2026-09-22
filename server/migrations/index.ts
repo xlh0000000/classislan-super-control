@@ -632,7 +632,165 @@ const rollCallSettings: Migration = {
   },
 };
 
-export const migrations: Migration[] = [baseline, taskOrchestration, enrollmentIdempotency, orgScopeRbac, policyEpochAndCas, taskPauseAndCancel, deviceResponseReplay, sessionsTable, enrollmentTokenTags, taskIdempotencyScope, auditCheckpoints, buildingLayout, policyAppendMode, deviceTransport, rollCallRoster, deviceTimetables, crashReports, autoTasks, teacherAccounts, rollCallSettings];
+const enrollmentTokenConfigs: Migration = {
+  id: "0020-enrollment-token-configs",
+  up(db) {
+    // 接入凭据可预绑定配置库条目，设备注册时据此自动下发一份设备级策略。
+    // 与 0008 的标签同理：关联表让外键接管存在性，删除配置只会带走绑定，不会留下悬空引用。
+    // （0023 撤掉了这条路径：接入只下发一份策略，此表随之下线。已发布的设备级策略照旧可用。）
+    db.exec(`CREATE TABLE IF NOT EXISTS enrollment_token_configs (
+      enrollment_token_id TEXT NOT NULL REFERENCES enrollment_tokens(id) ON DELETE CASCADE,
+      configuration_id TEXT NOT NULL REFERENCES configurations(id) ON DELETE CASCADE,
+      PRIMARY KEY(enrollment_token_id, configuration_id)
+    ) WITHOUT ROWID`);
+  },
+};
+
+/**
+ * 插件静默自升级的存储：发布物、作用域目标版本、设备回报状态、一次性下载凭据。
+ *
+ * `plugin_releases.version` 同时是落盘文件名（`<dataDir>/plugin-releases/<version>.cipx`），
+ * 所以写入前必须过严格版本校验；这里不重复用 CHECK 表达正则，SQLite 没有正则，
+ * 双份规则只会漂移。外键指向 version 让删除发布物时目标与凭据一起走，不留悬空版本。
+ */
+const pluginReleases: Migration = {
+  id: "0021-plugin-releases",
+  up(db) {
+    db.exec(`CREATE TABLE IF NOT EXISTS plugin_releases (
+      version TEXT PRIMARY KEY,
+      file_name TEXT NOT NULL,
+      size_bytes INTEGER NOT NULL CHECK(size_bytes BETWEEN 1 AND 26214400),
+      sha256 TEXT NOT NULL CHECK(length(sha256)=64),
+      is_current INTEGER NOT NULL DEFAULT 0 CHECK(is_current IN (0,1)),
+      created_by TEXT REFERENCES users(id),
+      created_at TEXT NOT NULL
+    ) STRICT`);
+    // 至多一条当前版本：置新即顶旧，由写入方在同一事务里先清后设。
+    db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_plugin_releases_current ON plugin_releases(is_current) WHERE is_current=1");
+
+    // 与策略层同一套作用域：school < organization < tag < device，由解析方按优先级取最近的一条。
+    db.exec(`CREATE TABLE IF NOT EXISTS plugin_update_targets (
+      id TEXT PRIMARY KEY,
+      scope_type TEXT NOT NULL CHECK(scope_type IN ('school','organization','tag','device')),
+      scope_id TEXT,
+      version TEXT NOT NULL REFERENCES plugin_releases(version) ON DELETE CASCADE,
+      updated_at TEXT NOT NULL,
+      updated_by TEXT REFERENCES users(id)
+    ) STRICT`);
+    db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_plugin_update_targets_scope ON plugin_update_targets(scope_type, COALESCE(scope_id,''))");
+
+    // 设备回报的升级状态：目标是插件自判自升，服务端只看结果，不看它有没有照做。
+    addColumn(db, "devices", "plugin_update_state", "TEXT NOT NULL DEFAULT ''");
+    addColumn(db, "devices", "plugin_update_version", "TEXT NOT NULL DEFAULT ''");
+
+    // 下载凭据与接入令牌同理：只存哈希，绑定设备与版本，可过期、限次，避免公开链接被无关方拉取。
+    db.exec(`CREATE TABLE IF NOT EXISTS plugin_download_tokens (
+      token_hash TEXT PRIMARY KEY,
+      device_id TEXT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+      version TEXT NOT NULL REFERENCES plugin_releases(version) ON DELETE CASCADE,
+      expires_at TEXT NOT NULL,
+      max_uses INTEGER NOT NULL DEFAULT 2,
+      use_count INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    ) STRICT`);
+    db.exec("CREATE INDEX IF NOT EXISTS idx_plugin_download_tokens_device ON plugin_download_tokens(device_id, expires_at)");
+  },
+};
+
+/**
+ * 接入凭据可以直接挂一份已发布的策略：新设备注册的同一刻按那份策略的内容落成自己的
+ * 设备级策略，不必管理员再点一次下发。列可为空——不绑定就不预下发任何东西。
+ * 策略修订从不删除（旧修订只作为历史保留），外键拦的是「引用了不存在的修订」。
+ */
+const enrollmentTokenPolicy: Migration = {
+  id: "0022-enrollment-token-policy",
+  up(db) {
+    addColumn(db, "enrollment_tokens", "policy_revision_id", "TEXT REFERENCES policy_revisions(id)");
+  },
+};
+
+/**
+ * 接入时能下发的就只有一份策略，凭据不必再逐类绑定配置库条目——想要某张课表，
+ * 就把引用了它的策略绑上来。0020 的关联表到此退役；已有的设备级策略是它产物，
+ * 文档里存的是配置 ID 本身，删表不影响那些设备继续取用。
+ */
+const dropEnrollmentTokenConfigs: Migration = {
+  id: "0023-drop-enrollment-token-configs",
+  up(db) {
+    db.exec("DROP TABLE IF EXISTS enrollment_token_configs");
+  },
+};
+
+/**
+ * 修订自己记住挂在哪个作用域上。
+ *
+ * 作用域的 assignment 行是复用的（同一个 id 一路指向当前生效的修订），所以「这一路挂过哪几版」
+ * 在 assignments 里根本数不出来——它只有当前这一条。给修订补上发布时的作用域，历史才落在数据里。
+ * 旧行按现有 assignment 回填：当前生效的那一版必然能认出来，更早又没留下 assignment 行的认不出来，
+ * 留 NULL 由历史视图自然省略，总好过把不属于这一路的修订凑进去。
+ */
+const policyRevisionScope: Migration = {
+  id: "0024-policy-revision-scope",
+  up(db) {
+    addColumn(db, "policy_revisions", "scope_type", "TEXT");
+    addColumn(db, "policy_revisions", "scope_id", "TEXT");
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_policy_revisions_scope ON policy_revisions(scope_type, scope_id, revision)`);
+    db.exec(`UPDATE policy_revisions SET
+        scope_type=(SELECT pa.scope_type FROM policy_assignments pa WHERE pa.policy_revision_id=policy_revisions.id
+          ORDER BY (pa.superseded_at IS NULL) DESC, pa.rowid DESC LIMIT 1),
+        scope_id=(SELECT pa.scope_id FROM policy_assignments pa WHERE pa.policy_revision_id=policy_revisions.id
+          ORDER BY (pa.superseded_at IS NULL) DESC, pa.rowid DESC LIMIT 1)
+      WHERE scope_type IS NULL AND EXISTS (SELECT 1 FROM policy_assignments pa WHERE pa.policy_revision_id=policy_revisions.id)`);
+  },
+};
+
+/**
+ * 发布时的锁同时抄在修订上。
+ * 锁挂在 assignment 上，而每个作用域复用一个 assignment 行，后一版发布会把上一版的锁覆盖掉——
+ * 于是「沿用某一份历史修订」能接回内容却接不回锁。修订自己带一份发布当场的锁，历史才答得上来。
+ * 旧行按该修订的 assignment 回填（未顶替的那条优先），对不上锁的保持默认空数组。
+ */
+const policyRevisionLocks: Migration = {
+  id: "0025-policy-revision-locks",
+  up(db) {
+    addColumn(db, "policy_revisions", "locks", "TEXT NOT NULL DEFAULT '[]'");
+    db.exec(`UPDATE policy_revisions SET locks=(SELECT pa.locks FROM policy_assignments pa WHERE pa.policy_revision_id=policy_revisions.id
+      ORDER BY (pa.superseded_at IS NULL) DESC, pa.rowid DESC LIMIT 1)
+      WHERE locks='[]' AND EXISTS (SELECT 1 FROM policy_assignments pa WHERE pa.policy_revision_id=policy_revisions.id
+        AND pa.locks IS NOT NULL AND pa.locks<>'[]')`);
+  },
+};
+
+/**
+ * 点名设置加一项「悬浮窗上要不要出现「多人」那颗按钮」。
+ * 「至少有一项表态」是表级 CHECK，新列不写进去的话，只关掉多人按钮的那一行会被旧约束当成空行拒掉；
+ * SQLite 改不了内联约束，只能照 0018 那样整表重建，唯一索引跟着重建。
+ */
+const rollCallMultiButton: Migration = {
+  id: "0026-rollcall-multi-button",
+  up(db) {
+    db.exec(`CREATE TABLE rollcall_settings_new (
+      id TEXT PRIMARY KEY,
+      scope_type TEXT NOT NULL CHECK(scope_type IN ('school','organization','device')),
+      scope_id TEXT,
+      enabled INTEGER CHECK(enabled IS NULL OR enabled IN (0,1)),
+      multi_enabled INTEGER CHECK(multi_enabled IS NULL OR multi_enabled IN (0,1)),
+      notify INTEGER CHECK(notify IS NULL OR notify IN (0,1)),
+      single_seconds INTEGER CHECK(single_seconds IS NULL OR (single_seconds BETWEEN 1 AND 120)),
+      multi_seconds INTEGER CHECK(multi_seconds IS NULL OR (multi_seconds BETWEEN 2 AND 300)),
+      revision INTEGER NOT NULL,
+      updated_at TEXT NOT NULL,
+      CHECK(enabled IS NOT NULL OR multi_enabled IS NOT NULL OR notify IS NOT NULL OR single_seconds IS NOT NULL OR multi_seconds IS NOT NULL)
+    ) STRICT`);
+    db.exec(`INSERT INTO rollcall_settings_new (id,scope_type,scope_id,enabled,notify,single_seconds,multi_seconds,revision,updated_at)
+      SELECT id,scope_type,scope_id,enabled,notify,single_seconds,multi_seconds,revision,updated_at FROM rollcall_settings`);
+    db.exec("DROP TABLE rollcall_settings");
+    db.exec("ALTER TABLE rollcall_settings_new RENAME TO rollcall_settings");
+    db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_rollcall_settings_scope ON rollcall_settings(scope_type, COALESCE(scope_id,''))");
+  },
+};
+
+export const migrations: Migration[] = [baseline, taskOrchestration, enrollmentIdempotency, orgScopeRbac, policyEpochAndCas, taskPauseAndCancel, deviceResponseReplay, sessionsTable, enrollmentTokenTags, taskIdempotencyScope, auditCheckpoints, buildingLayout, policyAppendMode, deviceTransport, rollCallRoster, deviceTimetables, crashReports, autoTasks, teacherAccounts, rollCallSettings, enrollmentTokenConfigs, pluginReleases, enrollmentTokenPolicy, dropEnrollmentTokenConfigs, policyRevisionScope, policyRevisionLocks, rollCallMultiButton];
 
 /** 对除 schema_migrations 外的全部 schema 对象做稳定指纹，用于校验迁移记录与真实 schema 是否一致。 */
 export function schemaFingerprint(db: Database.Database) {

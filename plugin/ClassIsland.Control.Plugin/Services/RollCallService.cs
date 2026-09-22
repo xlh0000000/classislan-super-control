@@ -54,6 +54,9 @@ public sealed class RollCallService : BackgroundService
     /// </summary>
     public bool EffectiveEnabled => _roster.Settings.Enabled ?? _store.Settings.RollCallEnabled;
 
+    /// <summary>生效的「多人」按钮开关：关掉后悬浮窗上只剩「抽人」一颗。</summary>
+    public bool EffectiveMultiEnabled => _roster.Settings.MultiEnabled ?? _store.Settings.RollCallMultiEnabled;
+
     /// <summary>生效的抽中提醒开关，取值顺序同上。</summary>
     public bool EffectiveNotify => _roster.Settings.Notify ?? _store.Settings.RollCallNotify;
 
@@ -96,6 +99,8 @@ public sealed class RollCallService : BackgroundService
     {
         if (EffectiveEnabled) Show();
         else Hide();
+        // 窗口已存在时 Show/Hide 都不会重应用设置：多人按钮的开关得靠这一步跟上。
+        ReapplySettings();
     }
 
     public override Task StopAsync(CancellationToken cancellationToken)
@@ -118,7 +123,7 @@ public sealed class RollCallService : BackgroundService
 
     /// <summary>设置页改动尺寸/不透明度后立即生效。</summary>
     public void ReapplySettings() =>
-        Dispatcher.UIThread.Post(() => _window?.ApplySettings(_store.Settings));
+        Dispatcher.UIThread.Post(() => _window?.ApplySettings(_store.Settings, EffectiveMultiEnabled));
 
     /// <summary>把悬浮窗挪回工作区右下角的默认位置。</summary>
     public void ResetPosition() => Dispatcher.UIThread.Post(() => _window?.PlaceAt(null, null));
@@ -142,7 +147,7 @@ public sealed class RollCallService : BackgroundService
             _window = null;
             StateChanged?.Invoke();
         };
-        window.ApplySettings(_store.Settings);
+        window.ApplySettings(_store.Settings, EffectiveMultiEnabled);
         window.PlaceAt(_store.Settings.RollCallX, _store.Settings.RollCallY);
         _window = window;
         window.Show();

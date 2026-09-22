@@ -18,6 +18,8 @@ const deploySchema = z.object({
 /**
  * 下发配置到选定目标（全校 / 组织子树 / 标签 / 指定设备）。
  * 每个目标会在对应作用域生成一份引用该配置的策略修订，设备下次轮询即生效。
+ * 配置页不再挂批量下发入口，界面调用方只剩设备详情的「套用课表」（教师主路径）；
+ * 成批交付一律走策略页，好处是同一份文档能同时管内容、设置与锁。
  */
 export default defineEventHandler(async (event) => {
   const user = event.context.user as { id: string; role: string; scopeOrgNodeId?: string | null };

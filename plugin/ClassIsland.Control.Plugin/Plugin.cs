@@ -15,6 +15,10 @@ public sealed class Plugin : PluginBase
 {
     public override void Initialize(HostBuilderContext context, IServiceCollection services)
     {
+        // 版本号只有一个来源：清单里的四段版本。它同时是向集控端上报的当前版本、
+        // 服务端比对目标版本的依据，以及暂存包要核对的 manifest 字段，写死字面量迟早对不上。
+        var self = new ThisPlugin(Info.Manifest.Id, Info.Manifest.Version);
+        services.AddSingleton(self);
         var settingsPath = Path.Combine(PluginConfigFolder, "settings.json");
         var statePath = Path.Combine(PluginConfigFolder, "state.json");
         // 入网身份封条：与 state.json 分离，state.json 被清空时据此恢复入网状态。
@@ -30,7 +34,7 @@ public sealed class Plugin : PluginBase
         var paths = new PluginPaths(PluginConfigFolder, settingsPath, statePath, sealPath, snapshotPath, mirrors);
         services.AddSingleton(paths);
         // 崩溃上报：异常钩子必须尽早安装，因此在注册阶段就构造单例并挂载。
-        var crashReporter = new CrashReporter(paths);
+        var crashReporter = new CrashReporter(paths, self);
         crashReporter.Install();
         services.AddSingleton(crashReporter);
         services.AddSingleton<EnrollmentGuard>();
@@ -60,6 +64,8 @@ public sealed class Plugin : PluginBase
         services.AddSingleton(new HttpClient());
         services.AddSingleton<WebSocketSession>();
         services.AddSingleton<ControlPlaneClient>();
+        // 插件静默自升级：下载→校验→私有暂存→等没课时重启；由轮询循环驱动。
+        services.AddSingleton<PluginUpdateService>();
         services.AddHostedService<PollingHostedService>();
         // 点名相关设置收进“点名”二级菜单，避免在设置导航里平铺一排页面。
         services.AddSettingsPageGroup("classisland-control.rollcall", "\uecaa", "点名");
@@ -68,6 +74,12 @@ public sealed class Plugin : PluginBase
         services.AddNotificationProvider<RemoteNotificationProvider>();
     }
 }
+
+/// <summary>
+/// 本插件自己的身份。Id 用于核对下载到的包确实是本插件（宿主要求 manifest 里的 Id，
+/// 拿错的包会去覆盖另一个插件的目录）；Version 是清单里的四段版本，也是向集控端上报的当前版本。
+/// </summary>
+public sealed record ThisPlugin(string Id, string Version);
 
 public sealed record PluginPaths(
     string Root,

@@ -34,9 +34,6 @@ const profileName = ref("新档案");
 const dirty = ref(false);
 const loading = ref(false);
 const toast = useToast();
-const showDeploy = ref(false);
-
-function onDeployed(result: { name: string; deviceCount: number }) { toast.ok(`已下发「${result.name}」到 ${result.deviceCount} 台设备。`); }
 const tab = ref<"timetable" | "subjects" | "layouts">("timetable");
 const activeLayoutId = ref("");
 const activeGroupId = ref(DEFAULT_CLASS_PLAN_GROUP_ID);
@@ -917,19 +914,9 @@ await applyInitialConfig();
     <button type="button" class="ghost" @click="showQuick = true">快装</button>
     <button type="button" class="ghost" @click="fileInput?.click()">导入档案</button>
     <button type="button" class="ghost" @click="createBlank">新建空档案</button>
-    <button type="button" class="ghost" :disabled="!activeId" @click="showDeploy = !showDeploy">下发到已选目标</button>
     <button type="button" class="solid" :disabled="loading" @click="save">保存为新修订</button>
     <input ref="fileInput" hidden type="file" accept="application/json,.json" @change="importFile">
   </PageHeading>
-
-  <DeployTargets
-    v-if="showDeploy && activeId"
-    :configuration-id="activeId"
-    :configuration-name="profileName"
-    :revision="profileConfigs.find(item => item.configurationId === activeId)?.currentRevision ?? undefined"
-    @deployed="onDeployed"
-    @close="showDeploy = false"
-  />
 
   <QuickSetupDialog
     v-if="showQuick"
@@ -1217,7 +1204,7 @@ section { margin-top: 22px; }
 .tl-block[data-type="1"] { background: var(--surface-2); border-left: 4px solid var(--line-strong); color: var(--ink-soft); }
 .tl-block[data-type="2"], .tl-block[data-type="3"] { padding: 0; background: repeating-linear-gradient(45deg, #8a857a 0 5px, #b8b2a4 5px 10px); cursor: move; }
 .tl-block[data-type="3"] { background: repeating-linear-gradient(45deg, #56604a 0 5px, #8fa07e 5px 10px); }
-.tl-block[data-active="true"] { outline: 2px solid var(--focus); outline-offset: 2px; z-index: 4; }
+.tl-block[data-active="true"] { box-shadow: inset 0 0 0 2px var(--focus); z-index: 4; }
 .tl-marquee { position: absolute; z-index: 7; border: 1px solid var(--accent); background: var(--accent-wash); opacity: 0.55; pointer-events: none; }
 .tl-text { display: block; overflow: hidden; white-space: nowrap; }
 .tl-text strong { display: block; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }

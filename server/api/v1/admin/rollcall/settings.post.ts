@@ -19,10 +19,11 @@ export default defineEventHandler(async (event) => {
     scopeType: input.scopeType,
     scopeId: input.scopeId ?? null,
     enabled: input.enabled ?? null,
+    multiEnabled: input.multiEnabled ?? null,
     notify: input.notify ?? null,
     singleSeconds: input.singleSeconds ?? null,
     multiSeconds: input.multiSeconds ?? null,
   });
-  // 四项全不表态等于清除本层覆盖，返回 null 让前端据此回落到继承链。
+  // 五项全不表态等于清除本层覆盖，返回 null 让前端据此回落到继承链。
   return { settings: saved };
 });

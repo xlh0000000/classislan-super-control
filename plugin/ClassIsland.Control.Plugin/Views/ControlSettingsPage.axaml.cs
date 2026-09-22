@@ -22,17 +22,20 @@ public partial class ControlSettingsPage : SettingsPageBase
 
     private readonly PluginSettingsStore _store;
     private readonly AgentStatus _status;
+    private readonly ThisPlugin _plugin;
     private bool _loading;
 
     [Obsolete("Only used by the XAML loader.")]
-    public ControlSettingsPage() : this(IAppHost.GetService<PluginSettingsStore>(), IAppHost.GetService<AgentStatus>())
+    public ControlSettingsPage() : this(IAppHost.GetService<PluginSettingsStore>(), IAppHost.GetService<AgentStatus>(),
+        IAppHost.GetService<ThisPlugin>())
     {
     }
 
-    public ControlSettingsPage(PluginSettingsStore store, AgentStatus status)
+    public ControlSettingsPage(PluginSettingsStore store, AgentStatus status, ThisPlugin plugin)
     {
         _store = store;
         _status = status;
+        _plugin = plugin;
         InitializeComponent();
         ServerUrlBox.Text = store.Settings.ServerUrl;
         DeviceNameBox.Text = store.Settings.DeviceName;
@@ -96,9 +99,13 @@ public partial class ControlSettingsPage : SettingsPageBase
         ErrorBar.IsVisible = error.Length > 0;
         TimetableStatusText.Text = !enrolled
             ? "未加入集控"
-            : _status.TimetableSummary.Length > 0 ? _status.TimetableSummary : "尚未同步";        CrashStatusText.Text = !enrolled
+            : _status.TimetableSummary.Length > 0 ? _status.TimetableSummary : "尚未同步";
+        CrashStatusText.Text = !enrolled
             ? "未加入集控"
             : _status.CrashSummary.Length > 0 ? _status.CrashSummary : "本机无崩溃记录";
+        UpdateStatusText.Text = !enrolled
+            ? "未加入集控"
+            : _status.UpdateSummary.Length > 0 ? _status.UpdateSummary : $"当前版本 {_plugin.Version}";
     }
 
     private async void OnTimetableToggleChanged(object? sender, Avalonia.Interactivity.RoutedEventArgs e)

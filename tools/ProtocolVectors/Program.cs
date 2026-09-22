@@ -119,6 +119,13 @@ Add("poll-request-with-crash-reports", "poll",
                 "", "2.1.1.1", "0.1.0", "Windows/x64"),
         }));
 
+// 插件自升级上报：暂存等空闲窗口时持续上报，applied/failed 只报一次。
+// 其余向量里的两个新字段均为 null 而被整体省略，正好覆盖「旧服务端不受影响」那一半。
+Add("poll-request-with-plugin-update-report", "poll",
+    new PollRequest(deviceId, 7, "2026-09-11T00:00:30.000Z", "0.1.6.0", "2.1.1.1", "Windows/x64",
+        "3f2a1c9d", null, 3, 7, "abc123", 0, Array.Empty<CommandResult>(), null,
+        0, null, null, null, "staged", "0.1.7.0"));
+
 // 换行显式写死 LF：默认跟随平台（Windows 是 CRLF），会让同一份向量在两个平台上
 // 产生不同字节，从而让 --check 在别的系统上误报“向量已过期”。
 var json = JsonSerializer.Serialize(new ContractFile("protocol-v1", vectors),

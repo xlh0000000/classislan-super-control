@@ -21,6 +21,15 @@
             </StackPanel>
           </c:SettingRow.Footer>
         </c:SettingRow>
+        <c:SettingRow Content="「多人」按钮" Description="关掉后窗上只留「抽人」一颗，一次只抽一个。">
+          <c:SettingRow.Footer>
+            <StackPanel Spacing="2" HorizontalAlignment="Right">
+              <ToggleSwitch x:Name="MultiDrawSwitch" OnContent="显示" OffContent="隐藏"/>
+              <TextBlock x:Name="MultiDrawNote" FontSize="12" Opacity="0.7" TextWrapping="Wrap"
+                         IsVisible="False" MaxWidth="260" HorizontalAlignment="Right" TextAlignment="Right"/>
+            </StackPanel>
+          </c:SettingRow.Footer>
+        </c:SettingRow>
         <c:SettingRow Content="抽中时提醒" Description="同时拉起 ClassIsland 提醒，时长与名字框一致。">
           <c:SettingRow.Footer>
             <StackPanel Spacing="2" HorizontalAlignment="Right">

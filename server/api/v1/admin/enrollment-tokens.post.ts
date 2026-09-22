@@ -21,16 +21,23 @@ export default defineEventHandler(async (event) => {
     const tagCount = (db.prepare(`SELECT COUNT(*) count FROM tags WHERE id IN (${placeholders})`).get(...tagIds) as { count: number }).count;
     if (tagCount !== tagIds.length) throw createError({ statusCode: 400, message: "接入码引用了不存在的标签。" });
   }
+  const policyRevisionId = input.data.policyRevisionId ?? null;
+  let policyLabel = "";
+  if (policyRevisionId) {
+    const revision = db.prepare("SELECT revision,name FROM policy_revisions WHERE id=?").get(policyRevisionId) as { revision: number; name: string } | undefined;
+    if (!revision) throw createError({ statusCode: 400, message: "接入码引用的策略修订不存在。" });
+    policyLabel = `第 ${revision.revision} 版「${revision.name}」`;
+  }
   withAuditedTransaction(
     (database) => {
       database.prepare(`INSERT INTO enrollment_tokens
-        (id,token_hash,kind,org_node_id,max_uses,expires_at,created_by,created_at)
-        VALUES (?,?,?,?,?,?,?,?)`).run(id, sha256(token), input.data.kind, input.data.orgNodeId ?? null, input.data.maxUses, expiresAt, user.id, createdAt);
+        (id,token_hash,kind,org_node_id,max_uses,expires_at,created_by,created_at,policy_revision_id)
+        VALUES (?,?,?,?,?,?,?,?,?)`).run(id, sha256(token), input.data.kind, input.data.orgNodeId ?? null, input.data.maxUses, expiresAt, user.id, createdAt, policyRevisionId);
       const addTag = database.prepare("INSERT INTO enrollment_token_tags (enrollment_token_id,tag_id) VALUES (?,?)");
       for (const tagId of tagIds) addTag.run(id, tagId);
       return id;
     },
-    () => ({ actorType: "user", actorId: user.id, action: "enrollment.create", targetType: "enrollment_token", targetId: id, summary: `创建${input.data.kind === "code" ? "一次性接入码" : "预配置批量凭据"}`, details: { expiresAt, maxUses: input.data.maxUses } }),
+    () => ({ actorType: "user", actorId: user.id, action: "enrollment.create", targetType: "enrollment_token", targetId: id, summary: `创建${input.data.kind === "code" ? "一次性接入码" : "批量接入码"}${policyLabel ? `（预下发策略 ${policyLabel}）` : ""}`, details: { expiresAt, maxUses: input.data.maxUses, policyRevisionId } }),
   );
   return { token, expiresAt };
 });

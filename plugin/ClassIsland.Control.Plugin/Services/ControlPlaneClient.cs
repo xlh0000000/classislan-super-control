@@ -89,6 +89,49 @@ public sealed class ControlPlaneClient(HttpClient httpClient, PluginSettingsStor
     /// <summary>关闭并丢弃常驻长连接，供轮询循环在传输方式切换或退出时调用。</summary>
     public async Task CloseWebSocketAsync() => await session.CloseAsync();
 
+    /// <summary>
+    /// 用轮询拿到的凭据把插件包下到指定临时文件，返回实际内容的 SHA-256（小写十六进制）。
+    ///
+    /// 这是设备链路上唯一不做请求签名的请求：一次性、限时、绑定本机与目标版本的凭据就是它的授权。
+    /// 长度必须与服务端公布的一致——少一截是被截断的包，多一是有人往这个路径上塞别的东西，
+    /// 两种情况都不能让它进到安装目录（宿主会照单解压）。
+    /// </summary>
+    public async Task<string> DownloadPluginReleaseAsync(RemotePluginUpdate offer, string tempPath, CancellationToken cancellationToken)
+    {
+        var url = new Uri(ResolveServerUri(), $"{offer.Path}?token={Uri.EscapeDataString(offer.Token)}");
+        using var response = await httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var statusCode = response.StatusCode;
+            var detail = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new HttpRequestException($"插件包下载失败：{ExtractMessage(detail)}", null, statusCode);
+        }
+        if (response.Content.Headers.ContentLength is { } declared && declared != offer.SizeBytes)
+            throw new HttpRequestException($"插件包大小不符：服务端说 {declared} 字节，凭据里是 {offer.SizeBytes} 字节。");
+        var directory = Path.GetDirectoryName(tempPath);
+        if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+        long written = 0;
+        using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        await using (var file = File.Create(tempPath))
+        using (var sha = IncrementalHash.CreateHash(HashAlgorithmName.SHA256))
+        {
+            var buffer = new byte[81920];
+            int read;
+            while ((read = await stream.ReadAsync(buffer, cancellationToken)) > 0)
+            {
+                // 边写边算：包只有几百 KB，但上限由服务端把住 25 MiB，不能在这里无限收。
+                if (written + read > offer.SizeBytes)
+                    throw new HttpRequestException("插件包比凭据里声明的还大，已中止。");
+                sha.AppendData(buffer, 0, read);
+                await file.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+                written += read;
+            }
+            if (written != offer.SizeBytes)
+                throw new HttpRequestException($"插件包只下到 {written} 字节，凭据里是 {offer.SizeBytes} 字节。");
+            return Convert.ToHexString(sha.GetHashAndReset()).ToLowerInvariant();
+        }
+    }
+
     private PollResult ReadWebSocketReply(string reply, TimeSpan roundTrip)
     {
         string? type;

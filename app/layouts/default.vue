@@ -24,19 +24,23 @@ const navGroups: { title: string; items: NavItem[] }[] = [
   { title: "常用", items: [
     { path: "/", label: "楼栋", permission: "devices.read" },
     { path: "/overview", label: "总览", permission: "dashboard.read" },
+  ] },
+  { title: "下发", items: [
     { path: "/policies", label: "策略", permission: "policies.read" },
     { path: "/tasks", label: "任务", permission: "tasks.read" },
-    { path: "/automation", label: "自动任务", permission: "tasks.read" },
+  ] },
+  { title: "配置", items: [...configKindEntries.map((entry) => ({ path: entry.page, label: entry.nav, permission: "configurations.read" })),
     { path: "/rollcall", label: "点名", permission: "rollcall.read" },
   ] },
-  { title: "配置", items: configKindEntries.map((entry) => ({ path: entry.page, label: entry.nav, permission: "configurations.read" })) },
   { title: "设备", items: [
     { path: "/devices", label: "设备", permission: "devices.read" },
     { path: "/organization", label: "组织", permission: "organization.read" },
     { path: "/enrollment", label: "接入", permission: "enrollment.write" },
   ] },
-  { title: "系统", items: [
+  { title: "平台", items: [
+    { path: "/automation", label: "自动任务", permission: "tasks.read" },
     { path: "/crashes", label: "崩溃", permission: "crashes.read" },
+    { path: "/plugins", label: "插件", permission: "plugins.read" },
     { path: "/audit", label: "审计", permission: "audit.read" },
     { path: "/users", label: "用户", permission: "users.read" },
     { path: "/settings", label: "系统", permission: "system.read" },

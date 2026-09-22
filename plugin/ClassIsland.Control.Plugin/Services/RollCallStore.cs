@@ -10,6 +10,7 @@ namespace ClassIsland.Control.Plugin.Services;
 public sealed record RollCallSettingsSnapshot
 {
     public bool? Enabled { get; init; }
+    public bool? MultiEnabled { get; init; }
     public bool? Notify { get; init; }
     public int? SingleSeconds { get; init; }
     public int? MultiSeconds { get; init; }
@@ -96,6 +97,7 @@ public sealed class RollCallStore
                 Settings = new RollCallSettingsSnapshot
                 {
                     Enabled = settings?.Enabled,
+                    MultiEnabled = settings?.MultiEnabled,
                     Notify = settings?.Notify,
                     SingleSeconds = settings?.SingleSeconds,
                     MultiSeconds = settings?.MultiSeconds,

@@ -25,6 +25,8 @@ public sealed class PollingHostedService(
     RollCallStore rollCall,
     TimetableSnapshotService timetable,
     CrashReporter crashReporter,
+    PluginUpdateService update,
+    ThisPlugin plugin,
     AgentStatus status,
     IServiceProvider services,
     ILogger<PollingHostedService> logger) : BackgroundService
@@ -136,6 +138,9 @@ public sealed class PollingHostedService(
                 var catalog = capabilities.Detect();
                 var digest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(catalog)))).ToLowerInvariant();
                 var state = store.State;
+                // 插件自升级：每轮先把落盘的进度对一遍磁盘事实，再据它决定报什么。
+                state = state with { PluginUpdate = update.Reconcile(state.PluginUpdate) };
+                var (updateState, updateVersion) = PluginUpdateService.Report(state.PluginUpdate);
                 // 课表上传：开启且宿主可用时每轮带摘要；本机档案有改动时带全量快照。
                 var timetableEnabled = store.Settings.TimetableUploadEnabled && timetable.Available;
                 var timetableDigest = timetableEnabled ? timetable.Digest : null;
@@ -148,7 +153,7 @@ public sealed class PollingHostedService(
                     state.DeviceId,
                     state.PendingPoll?.Sequence ?? state.Sequence + 1,
                     DateTime.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", System.Globalization.CultureInfo.InvariantCulture),
-                    "0.1.6",
+                    plugin.Version,
                     AppBase.AppVersion,
                     $"{AppBase.Current.OperatingSystem}/{AppBase.Current.Platform}",
                     digest,
@@ -162,7 +167,9 @@ public sealed class PollingHostedService(
                     rollCall.Snapshot.Revision,
                     timetableDigest,
                     timetableSnapshot,
-                    crashes.Count > 0 ? crashes : null);
+                    crashes.Count > 0 ? crashes : null,
+                    updateState,
+                    updateVersion);
                 if (request.AppliedSections is null) request = request with { AppliedSections = new Dictionary<string, string>() };
                 if (state.PendingPoll?.Sequence != request.Sequence)
                 {
@@ -207,6 +214,9 @@ public sealed class PollingHostedService(
                 // 崩溃上报：轮询已被服务端接收（入库发生在响应构建之前），此时才清空本地 outbox。
                 if (crashes.Count > 0) crashReporter.Confirm(crashes.Select(report => report.Id));
                 status.CrashUpdated(crashReporter.Summary());
+                // 插件自升级：按这一轮的目标下载并私有暂存；重启与否留到状态落盘之后再判断。
+                state = state with { PluginUpdate = await update.HandleOfferAsync(response.PluginUpdate, state.PluginUpdate, stoppingToken) };
+                status.UpdateUpdated(update.Describe(state.PluginUpdate));
                 state = state with { PendingPoll = null };
                 // 只删除服务端明确回执（accepted/already-recorded）的 ACK；被拒绝的结果必须保留并告警，
                 // 否则“管理员已取消但设备实际执行成功”等冲突会被静默丢弃。
@@ -284,10 +294,15 @@ public sealed class PollingHostedService(
                 state = store.State.DeviceId.Length == 0
                     ? state with { Sequence = 0, DriftCount = 0 }
                     : state with { Sequence = state.Sequence + 1, DriftCount = driftCount };
+                // applied/failed 是一次性的：本轮已被服务端接收，落盘前清掉，否则界面会一直挂着旧结论。
+                state = state with { PluginUpdate = PluginUpdateService.Settle(state.PluginUpdate) };
                 await store.SaveStateAsync(state, stoppingToken);
                 // 实时模式的定时只是兜底（上限 60 秒）：集控端 notify 会随时唤醒，不必按 HTTP 轮询的 30 秒上限赶点。
                 nextSeconds = Math.Clamp(response.NextPollSeconds, 5, store.Settings.Transport == "websocket" ? 60 : 30);
                 if (driftCount > 0) nextSeconds = Math.Min(nextSeconds, 15);
+                // 有包在等空闲窗口：轮询保持勤快，既要尽早发现管理员改了目标，也要及时抓住下课那一刻。
+                if (state.PluginUpdate.State == "staged") nextSeconds = Math.Min(nextSeconds, 15);
+                if (await update.RestartIfIdleAsync(state.PluginUpdate, stoppingToken)) return;
                 status.AttemptSucceeded();
                 failures = 0;
             }
@@ -356,7 +371,7 @@ public sealed class PollingHostedService(
     {
         if (string.IsNullOrWhiteSpace(store.Settings.EnrollmentToken)) throw new InvalidOperationException("Enrollment token is required.");
         var publicKeyJwk = await EnsureEnrollmentKeyAsync(store.State, cancellationToken);
-        var response = await client.EnrollAsync(new EnrollmentRequest(store.Settings.EnrollmentToken, store.Settings.DeviceName, publicKeyJwk, null, "0.1.6", AppBase.AppVersion, $"{AppBase.Current.OperatingSystem}/{AppBase.Current.Platform}"), cancellationToken);
+        var response = await client.EnrollAsync(new EnrollmentRequest(store.Settings.EnrollmentToken, store.Settings.DeviceName, publicKeyJwk, null, plugin.Version, AppBase.AppVersion, $"{AppBase.Current.OperatingSystem}/{AppBase.Current.Platform}"), cancellationToken);
         await store.SaveStateAsync(store.State with
         {
             DeviceId = response.DeviceId,

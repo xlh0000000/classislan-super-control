@@ -19,22 +19,23 @@ public sealed class CrashReporter
     /// <summary>单轮上报条数上限，与服务端 poll schema 的 .max(20) 对齐。</summary>
     private const int BatchLimit = 20;
     private const int MaxStackTrace = 8000;
-    private const string PluginVersion = "0.1.6";
 
     private static readonly JsonSerializerOptions JsonOptions =
         new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
     private readonly object _gate = new();
     private readonly string _outboxPath;
+    private readonly string _pluginVersion;
     private readonly string _appVersion;
     private readonly string _platform;
     private List<RemoteCrashReport> _outbox;
     private int _confirmed;
     private int _installed;
 
-    public CrashReporter(PluginPaths paths)
+    public CrashReporter(PluginPaths paths, ThisPlugin plugin)
     {
         _outboxPath = Path.Combine(paths.Root, "crash-outbox.json");
+        _pluginVersion = plugin.Version;
         _appVersion = Trim(SafeProbe(() => AppBase.AppVersion), 32);
         _platform = Trim(SafeProbe(() => $"{AppBase.Current.OperatingSystem}/{AppBase.Current.Platform}"), 80);
         _outbox = Load();
@@ -110,7 +111,7 @@ public sealed class CrashReporter
                 Trim(exception?.ToString() ?? note, MaxStackTrace),
                 Trim(Thread.CurrentThread.Name ?? "", 60),
                 _appVersion,
-                PluginVersion,
+                _pluginVersion,
                 _platform);
             lock (_gate)
             {

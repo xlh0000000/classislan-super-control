@@ -21,12 +21,13 @@ type EffectiveDevice = {
 type OrgData = { nodes: { id: string; name: string; path: string }[] };
 type DeviceRow = { id: string; name: string; orgName: string };
 
-const EMPTY_DRAFT: RollCallSettingsDraft = { enabled: null, notify: null, singleSeconds: null, multiSeconds: null };
+const EMPTY_DRAFT: RollCallSettingsDraft = { enabled: null, multiEnabled: null, notify: null, singleSeconds: null, multiSeconds: null };
 
-/** 设置行带着作用域与版本等元信息，填表只取那四项表态。 */
-function settingsOf(row: Pick<SettingsRow, "enabled" | "notify" | "singleSeconds" | "multiSeconds"> | null): RollCallSettingsDraft {
+/** 设置行带着作用域与版本等元信息，填表只取那五项表态。 */
+function settingsOf(row: Pick<SettingsRow, "enabled" | "multiEnabled" | "notify" | "singleSeconds" | "multiSeconds"> | null): RollCallSettingsDraft {
   return {
     enabled: row?.enabled ?? null,
+    multiEnabled: row?.multiEnabled ?? null,
     notify: row?.notify ?? null,
     singleSeconds: row?.singleSeconds ?? null,
     multiSeconds: row?.multiSeconds ?? null,
@@ -167,7 +168,7 @@ async function saveDefaults(cleared = false) {
       headers: import.meta.client ? { origin: window.location.origin } : undefined,
       body: {
         scopeType: scope.type, scopeId: scope.type === "school" ? null : scope.id,
-        enabled: draft.enabled, notify: draft.notify,
+        enabled: draft.enabled, multiEnabled: draft.multiEnabled, notify: draft.notify,
         singleSeconds: draft.singleSeconds, multiSeconds: draft.multiSeconds,
       },
     });
@@ -178,7 +179,7 @@ async function saveDefaults(cleared = false) {
   finally { defaultsBusy.value = false; }
 }
 
-/** 清除本层设置：四项全不表态，服务端据此删掉这一行。 */
+/** 清除本层设置：五项全不表态，服务端据此删掉这一行。 */
 async function clearDefaults() {
   defaultDraft.value = { ...EMPTY_DRAFT };
   await saveDefaults(true);

@@ -7,9 +7,9 @@ const { data: layout, refresh } = await useFetch<{ buildings: Building[]; floors
   "/api/v1/admin/layout",
   { key: "cic-layout", default: () => ({ buildings: [], floors: [], rooms: [] }) },
 );
-const { devices, selection, count, empty, clear } = useTargetSelection();
+const { devices, selection, enabledDevices, count, empty, clear, toggleSchool } = useTargetSelection();
 const { user, can } = useSession();
-/** 多选只为下发服务：三个下发页都进不去的账号，不该看见选了目标却无处可用。 */
+/** 多选只为发布服务：策略与任务都进不去的账号，不该看见选了目标却无处可用。 */
 const canPublish = computed(() => can("policies.write") || can("configurations.write") || can("tasks.write"));
 /** 只看得到绑定设备的账号（教师）要的是自己那台机的位置，整棵空楼栋树只是噪音。 */
 const boundOnly = computed(() => user.value?.role === "teacher");
@@ -17,6 +17,7 @@ const boundOnly = computed(() => user.value?.role === "teacher");
 const roomId = ref<string | null>(null);
 const inspectId = ref<string | null>(null);
 const showTargets = ref(false);
+const activeBuilding = ref<string | null>(null);
 
 const shown = computed(() => {
   const tree = layout.value;
@@ -30,7 +31,7 @@ const shown = computed(() => {
 
 const room = computed(() => (roomId.value ? layout.value.rooms.find((item) => item.id === roomId.value) ?? null : null));
 
-/** 楼栋视图里的多选直接写进全局目标选择，供策略与配置下发复用。 */
+/** 楼栋视图里的多选直接写进全局目标选择，供策略与任务复用。 */
 function toggleDevices(ids: string[]) {
   if (!ids.length) return;
   const current = selection.value.deviceIds;
@@ -47,6 +48,13 @@ function marqueeDevices(ids: string[], additive: boolean) {
 }
 
 function openRoom(id: string) { roomId.value = id; }
+/** 当前楼栋的全部设备（教师只看得到放了设备的那几间）。 */
+const buildingDeviceIds = computed(() => {
+  const tree = shown.value;
+  const floorIds = new Set(tree.floors.filter((floor) => floor.buildingId === activeBuilding.value).map((floor) => floor.id));
+  return [...new Set(tree.rooms.filter((room) => floorIds.has(room.floorId)).flatMap((room) => room.deviceIds))];
+});
+const buildingAllSelected = computed(() => buildingDeviceIds.value.length > 0 && buildingDeviceIds.value.every((id) => selection.value.deviceIds.includes(id)));
 /** 单击设备看设备详情（内含生效策略明细入口）；先关掉教室弹窗，避免叠层。 */
 function inspect(id: string) { roomId.value = null; inspectId.value = id; }
 async function changed() { await refresh(); }
@@ -56,18 +64,20 @@ async function changed() { await refresh(); }
   <PageHeading kicker="按楼栋管设备" title="楼栋部署">
     <div v-if="canPublish" class="picked">
       <span class="count">{{ empty ? "未选目标" : `已选 ${count} 台` }}</span>
+      <button type="button" class="ghost" :disabled="!buildingDeviceIds.length" @click="toggleDevices(buildingDeviceIds)">{{ buildingAllSelected ? "取消全选本楼栋" : "全选本楼栋" }}</button>
+      <label class="all" :data-on="selection.school ? 'true' : 'false'"><input type="checkbox" :checked="selection.school" @change="toggleSchool()"><span>全校</span><small>{{ enabledDevices.length }}</small></label>
       <button type="button" class="solid" @click="showTargets = true">选择目标</button>
       <template v-if="!empty">
         <NuxtLink v-if="can('policies.write')" class="ghost" to="/policies?new=1">发布策略</NuxtLink>
-        <NuxtLink v-if="can('configurations.write')" class="ghost" to="/configurations/profile">发布课表</NuxtLink>
-        <NuxtLink v-if="can('configurations.write')" class="ghost" to="/configurations">下发配置</NuxtLink>
         <NuxtLink v-if="can('tasks.write')" class="ghost" to="/tasks?new=1">发布任务</NuxtLink>
+        <NuxtLink v-if="can('configurations.write')" class="ghost" to="/configurations">配置库</NuxtLink>
         <button type="button" class="ghost" @click="clear">清空选择</button>
       </template>
     </div>
   </PageHeading>
 
   <BuildingBoard
+    v-model:active-building="activeBuilding"
     :buildings="shown.buildings"
     :floors="shown.floors"
     :rooms="shown.rooms"
@@ -99,4 +109,9 @@ async function changed() { await refresh(); }
 <style scoped>
 .picked { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
 .count { color: var(--ink-muted); font-size: 11px; letter-spacing: 0.8px; font-variant-numeric: tabular-nums; }
+/* 全校是一路作用域，不是一批设备：勾上后发布的是「全校」那一条策略，所以做成独立控件而不是又一颗按钮。 */
+.all { display: inline-flex; align-items: center; gap: 8px; min-height: var(--control-h-sm); padding: 0 11px; border: 1px solid var(--line); color: var(--ink-soft); font-size: 11px; cursor: pointer; }
+.all[data-on="true"] { border-color: var(--accent); background: var(--accent-wash); color: var(--ink); }
+.all input { width: 15px; height: 15px; }
+.all small { color: var(--ink-muted); font-variant-numeric: tabular-nums; }
 </style>

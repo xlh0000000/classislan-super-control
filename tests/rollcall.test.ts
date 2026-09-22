@@ -70,9 +70,9 @@ function saveSettings(db: Database.Database, scopeType: "school" | "organization
   return upsertRollCallSettings(db, user, { scopeType, scopeId, ...values });
 }
 
-/** 没有任何作用域表过态：四项全交给设备本机。 */
-const NO_SETTINGS: RollCallSettings = { enabled: null, notify: null, singleSeconds: null, multiSeconds: null };
-const NO_SOURCES = { enabled: "local", notify: "local", singleSeconds: "local", multiSeconds: "local" } as const;
+/** 没有任何作用域表过态：五项全交给设备本机。 */
+const NO_SETTINGS: RollCallSettings = { enabled: null, multiEnabled: null, notify: null, singleSeconds: null, multiSeconds: null };
+const NO_SOURCES = { enabled: "local", multiEnabled: "local", notify: "local", singleSeconds: "local", multiSeconds: "local" } as const;
 /** 未写任何设置时，生效状态里点名设置该有的样子。 */
 const NO_SETTING_STATE = { settings: NO_SETTINGS, settingSources: NO_SOURCES, deviceOverride: null } as const;
 
@@ -232,7 +232,7 @@ describe("教师范围内的点名名单", () => {
 });
 
 describe("点名设置的逐字段继承", () => {
-  it("没有任何作用域表过态时四项都是 null，由设备本机设置兜底", () => {
+  it("没有任何作用域表过态时五项都是 null，由设备本机设置兜底", () => {
     const db = createDb();
     expect(resolveRollCallForDevice(db, DEVICE_1)).toMatchObject(NO_SETTING_STATE);
     db.close();
@@ -242,13 +242,25 @@ describe("点名设置的逐字段继承", () => {
     const db = createDb();
     saveSettings(db, "school", null, { singleSeconds: 3, multiSeconds: 20 });
     saveSettings(db, "organization", ORG_A, { notify: false });
-    saveSettings(db, "device", DEVICE_1, { enabled: false });
+    saveSettings(db, "device", DEVICE_1, { enabled: false, multiEnabled: false });
     expect(resolveRollCallForDevice(db, DEVICE_1)).toMatchObject({
-      settings: { enabled: false, notify: false, singleSeconds: 3, multiSeconds: 20 },
-      settingSources: { enabled: "device", notify: "organization", singleSeconds: "school", multiSeconds: "school" },
+      settings: { enabled: false, multiEnabled: false, notify: false, singleSeconds: 3, multiSeconds: 20 },
+      settingSources: { enabled: "device", multiEnabled: "device", notify: "organization", singleSeconds: "school", multiSeconds: "school" },
       // 覆盖行只回显这台设备自己那一行：界面据此把三态控件摆回“自定义”。
-      deviceOverride: { enabled: false, notify: null, singleSeconds: null, multiSeconds: null },
+      deviceOverride: { enabled: false, multiEnabled: false, notify: null, singleSeconds: null, multiSeconds: null },
     });
+    db.close();
+  });
+
+  it("只表态「多人」按钮，这一项也存得下、传得到", () => {
+    // 表级 CHECK 曾经只认四项：漏掉新列的话，「只把多人按钮关掉」这一行会被当成空行拒掉。
+    const db = createDb();
+    saveSettings(db, "school", null, { multiEnabled: false });
+    expect(resolveRollCallForDevice(db, DEVICE_1)).toMatchObject({
+      settings: { multiEnabled: false },
+      settingSources: { multiEnabled: "school" },
+    });
+    expect(poll(db, 1, 0).rollcall!.settings).toMatchObject({ enabled: null, multiEnabled: false });
     db.close();
   });
 
@@ -277,7 +289,7 @@ describe("点名设置的逐字段继承", () => {
     db.close();
   });
 
-  it("同一作用域重复保存只有一行，四项全撤回时该行被删除", () => {
+  it("同一作用域重复保存只有一行，五项全撤回时该行被删除", () => {
     const db = createDb();
     saveSettings(db, "school", null, { enabled: true });
     saveSettings(db, "school", null, { enabled: false });
@@ -363,7 +375,7 @@ describe("点名名单随轮询下发", () => {
   it("下发的设置字段名与插件契约逐字对齐", () => {
     // 插件按属性名匹配 JSON 键：任何一侧改名都会变成“下发成功但设备收到 null”，
     // 因此用真实的轮询响应正文对一次字面量。
-    expect(pluginSettingsFields()).toEqual(["enabled", "notify", "singleSeconds", "multiSeconds"]);
+    expect(pluginSettingsFields()).toEqual(["enabled", "multiEnabled", "notify", "singleSeconds", "multiSeconds"]);
     const db = createDb();
     saveSettings(db, "school", null, { enabled: false });
     const delivered = poll(db, 1, 0).rollcall!;

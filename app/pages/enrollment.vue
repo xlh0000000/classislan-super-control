@@ -1,11 +1,15 @@
 <script setup lang="ts">
 type OrgData = { nodes: { id: string; name: string; path: string }[]; tags: { id: string; name: string; color: string }[] };
+type PolicyOption = { id: string; revision: number; name: string; assignmentId: string | null };
 const { data: org } = await useFetch<OrgData>("/api/v1/admin/organization", { default: () => ({ nodes: [], tags: [] }) });
+const { data: policyRevisions } = await useFetch<PolicyOption[]>("/api/v1/admin/policies", { default: () => [] });
 const mode = ref<"code" | "bundle">("code");
 const expires = ref(60);
 const maxUses = ref(20);
 const orgNodeId = ref("");
 const selectedTags = ref<string[]>([]);
+/** 新设备的策略底稿：注册时整份照抄所选修订（连锁一起），之后这台机仍可单独再改。 */
+const policyRevisionId = ref("");
 const result = ref<{ token?: string; expiresAt?: string } | null>(null);
 const toast = useToast();
 const pending = ref(false);
@@ -16,7 +20,14 @@ async function createCredential() {
     result.value = await $fetch<{ token: string; expiresAt: string }>("/api/v1/admin/enrollment-tokens", {
       method: "POST" as const,
       headers: import.meta.client ? { origin: window.location.origin } : undefined,
-      body: { kind: mode.value, ttlMinutes: expires.value, maxUses: mode.value === "bundle" ? maxUses.value : 1, orgNodeId: orgNodeId.value || null, tagIds: selectedTags.value },
+      body: {
+        kind: mode.value,
+        ttlMinutes: expires.value,
+        maxUses: mode.value === "bundle" ? maxUses.value : 1,
+        orgNodeId: orgNodeId.value || null,
+        tagIds: selectedTags.value,
+        policyRevisionId: policyRevisionId.value || null,
+      },
     });
     toast.ok("接入码已生成，只显示这一次。");
   } catch (err) { toast.err((err as { data?: { message?: string } })?.data?.message ?? "接入码没生成出来。"); }
@@ -37,7 +48,7 @@ async function copyToken() {
       <span>01</span><strong>一次性接入码</strong><p>在插件里填服务地址和接入码。</p>
     </button>
     <button type="button" :class="{ selected: mode === 'bundle' }" @click="mode = 'bundle'">
-      <span>02</span><strong>批量预配置包</strong><p>生成配置文件，和插件一起安装。</p>
+      <span>02</span><strong>批量接入码</strong><p>一个码可注册多台，装机时共用。</p>
     </button>
   </section>
   <section class="creator controls">
@@ -45,6 +56,10 @@ async function copyToken() {
     <label v-if="mode === 'bundle'">允许接入设备数<input v-model="maxUses" min="2" max="1000" type="number"></label>
     <label>绑定组织<select v-model="orgNodeId"><option value="">不分组</option><option v-for="node in org.nodes" :key="node.id" :value="node.id">{{ node.name }}</option></select></label>
     <fieldset v-if="org.tags.length" class="tags"><legend>绑定标签</legend><label v-for="tag in org.tags" :key="tag.id" class="tag"><input v-model="selectedTags" type="checkbox" :value="tag.id"><span :style="{ background: tag.color }" />{{ tag.name }}</label></fieldset>
+    <div class="presets">
+      <span class="presets-title">加入时自动下发</span>
+      <label class="wide-field">下发策略<select v-model="policyRevisionId"><option value="">不绑定</option><option v-for="item in policyRevisions" :key="item.id" :value="item.id">{{ item.name }} · 第 {{ item.revision }} 版{{ item.assignmentId ? "" : "（历史修订）" }}</option></select></label>
+    </div>
     <button :disabled="pending" type="button" @click="createCredential">{{ pending ? "生成中…" : "生成接入码" }}</button>
 
   </section>
@@ -87,6 +102,12 @@ async function copyToken() {
 .tags legend { padding: 0 6px 0 0; color: var(--ink-muted); font-size: 11px; letter-spacing: 0.6px; }
 .tag { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--ink-soft); }
 .tag span { width: 10px; height: 10px; }
+.presets { display: flex; flex: 1 1 100%; flex-wrap: wrap; align-items: flex-end; gap: 14px; margin-top: 8px; padding-top: 16px; border-top: 1px solid var(--line-soft); }
+.presets-title { flex: 1 1 100%; color: var(--ink-faint); font-size: 10px; letter-spacing: 1.4px; }
+.presets label { display: grid; gap: 8px; color: var(--ink-muted); font-size: 11px; letter-spacing: 0.6px; }
+.presets select { width: 200px; }
+/* 策略条目要连名字和修订号一起读出，比配置名长一截。 */
+.presets label.wide-field select { width: 268px; }
 .creator > button { margin-left: auto; }
 .hint { margin: 0 0 14px; color: var(--warning); font-size: 12px; }
 .token { display: block; padding: 16px; border: 1px solid var(--line); background: var(--surface-2); overflow-wrap: anywhere; font-family: ui-monospace, monospace; font-size: 13px; line-height: 1.7; }

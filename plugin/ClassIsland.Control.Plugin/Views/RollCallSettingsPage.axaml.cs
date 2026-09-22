@@ -43,10 +43,12 @@ public partial class RollCallSettingsPage : SettingsPageBase
         MultiBox.Value = _service.EffectiveMultiSeconds;
         NotifySwitch.IsChecked = _service.EffectiveNotify;
         EnableSwitch.IsChecked = _service.IsVisible;
+        MultiDrawSwitch.IsChecked = _service.EffectiveMultiEnabled;
         LocalNamesBox.Text = string.Join(Environment.NewLine, settings.RollCallLocalNames);
         _loading = false;
 
         EnableSwitch.IsCheckedChanged += OnChanged;
+        MultiDrawSwitch.IsCheckedChanged += OnChanged;
         NotifySwitch.IsCheckedChanged += OnChanged;
         WidthBox.ValueChanged += OnChanged;
         HeightBox.ValueChanged += OnChanged;
@@ -109,11 +111,13 @@ public partial class RollCallSettingsPage : SettingsPageBase
         _loading = true;
         var server = _service.Roster.Settings;
         EnableSwitch.IsChecked = _service.IsVisible;
+        MultiDrawSwitch.IsChecked = _service.EffectiveMultiEnabled;
         NotifySwitch.IsChecked = _service.EffectiveNotify;
         SingleBox.Value = _service.EffectiveSingleSeconds;
         MultiBox.Value = _service.EffectiveMultiSeconds;
         _loading = false;
         SetServerControlled(EnableSwitch, EnableNote, server.Enabled is not null);
+        SetServerControlled(MultiDrawSwitch, MultiDrawNote, server.MultiEnabled is not null);
         SetServerControlled(NotifySwitch, NotifyNote, server.Notify is not null);
         SetServerControlled(SingleBox, SingleNote, server.SingleSeconds is not null);
         SetServerControlled(MultiBox, MultiNote, server.MultiSeconds is not null);
@@ -165,6 +169,7 @@ public partial class RollCallSettingsPage : SettingsPageBase
         var settings = local with
         {
             RollCallEnabled = server.Enabled ?? (EnableSwitch.IsChecked == true),
+            RollCallMultiEnabled = server.MultiEnabled ?? (MultiDrawSwitch.IsChecked == true),
             RollCallNotify = server.Notify ?? (NotifySwitch.IsChecked == true),
             RollCallWidth = (double)(WidthBox.Value ?? 260m),
             RollCallHeight = (double)(HeightBox.Value ?? 112m),

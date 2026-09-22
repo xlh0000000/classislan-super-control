@@ -30,8 +30,8 @@ public sealed record CommandResult(string CommandId, string State, [property: Js
 
 public sealed record EnrollmentRequest(string Token, string Name, Dictionary<string, object> PublicKeyJwk, string? KeyThumbprint, string PluginVersion, string AppVersion, string Platform);
 public sealed record EnrollmentResponse(string DeviceId, int PollIntervalSeconds, DateTime ServerTimeUtc, string ServerSigningPublicKey, string ServerSigningKeyId);
-public sealed record PollRequest(string DeviceId, long Sequence, string TimestampUtc, string PluginVersion, string AppVersion, string Platform, string CapabilityDigest, IReadOnlyList<CapabilityDescriptor>? Capabilities, long PolicyRevision, long PolicyEpoch, string PolicyHash, int DriftCount, IReadOnlyList<CommandResult> Acknowledgements, IReadOnlyDictionary<string, string>? AppliedSections, long RollCallRevision = 0, string? TimetableDigest = null, JsonElement? Timetable = null, IReadOnlyList<RemoteCrashReport>? Crashes = null);
-public sealed record PollResponse(DateTime ServerTimeUtc, int NextPollSeconds, string? Transport, RemotePolicy? Policy, List<RemoteCommandEnvelope> Commands, List<AckReceipt>? Acknowledgements = null, RemoteRollCall? RollCall = null, bool TimetableRequired = false);
+public sealed record PollRequest(string DeviceId, long Sequence, string TimestampUtc, string PluginVersion, string AppVersion, string Platform, string CapabilityDigest, IReadOnlyList<CapabilityDescriptor>? Capabilities, long PolicyRevision, long PolicyEpoch, string PolicyHash, int DriftCount, IReadOnlyList<CommandResult> Acknowledgements, IReadOnlyDictionary<string, string>? AppliedSections, long RollCallRevision = 0, string? TimetableDigest = null, JsonElement? Timetable = null, IReadOnlyList<RemoteCrashReport>? Crashes = null, string? PluginUpdateState = null, string? PluginUpdateVersion = null);
+public sealed record PollResponse(DateTime ServerTimeUtc, int NextPollSeconds, string? Transport, RemotePolicy? Policy, List<RemoteCommandEnvelope> Commands, List<AckReceipt>? Acknowledgements = null, RemoteRollCall? RollCall = null, bool TimetableRequired = false, RemotePluginUpdate? PluginUpdate = null);
 /// <summary>WebSocket 传输的消息封装；信封与响应正文与 HTTP 轮询逐字节同源。</summary>
 public sealed record WebSocketPollMessage(string Type, JsonElement Envelope);
 public sealed record WebSocketPollResult(string Type, string KeyId, string Signature, string Body);
@@ -40,13 +40,18 @@ public sealed record WebSocketError(string Type, int StatusCode, string Message,
 public sealed record AckReceipt(string CommandId, string Status, string? Reason = null, string? State = null);
 public sealed record RemotePolicy(long Revision, long Epoch, JsonElement Document, Dictionary<string, JsonElement>? Locks, string DocumentHash);
 /// <summary>
-/// 云端下发的点名内容：名单加四项设置，仅在设备手上的修订过期时整份回带。
+/// 云端下发的点名内容：名单加五项设置，仅在设备手上的修订过期时整份回带。
 /// Names 为 null 表示生效链上没有指派给这台设备的名单，本机名字表继续生效；
 /// 设置里的字段为 null 表示集控端这一项不表态，由本机设置兜底。
 /// </summary>
 public sealed record RemoteRollCall(long Revision, IReadOnlyList<string>? Names, RemoteRollCallSettings? Settings = null);
-/// <summary>集控端下发的点名设置，与名单共用一套作用域和修订号。</summary>
-public sealed record RemoteRollCallSettings(bool? Enabled, bool? Notify, int? SingleSeconds, int? MultiSeconds);
+/// <summary>集控端下发的点名设置，与名单共用一套作用域和修订号。属性名即 JSON 键。</summary>
+public sealed record RemoteRollCallSettings(bool? Enabled, bool? MultiEnabled, bool? Notify, int? SingleSeconds, int? MultiSeconds);
+/// <summary>
+/// 插件静默升级的一次下载机会：目标版本、包摘要与大小、下载路径和限时限次的凭据。
+/// Path 是相对路径，设备用它拼自己已配置的集控地址。
+/// </summary>
+public sealed record RemotePluginUpdate(string Version, string Sha256, long SizeBytes, string Path, string Token, DateTime ExpiresAt);
 /// <summary>
 /// 设备端崩溃报告：由插件在本机捕获未处理异常后生成，随轮询上报。
 /// Id 由客户端生成，服务端以它为主键去重，因此重传天然幂等。

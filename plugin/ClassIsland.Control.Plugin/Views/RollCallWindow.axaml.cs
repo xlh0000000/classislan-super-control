@@ -25,6 +25,12 @@ public partial class RollCallWindow : Window
     private static readonly IBrush MultiFace = new SolidColorBrush(Color.Parse("#F2252820"));
     private static readonly IBrush MultiFaceHover = new SolidColorBrush(Color.Parse("#F24B4A3B"));
 
+    /// <summary>
+    /// 「多人」按钮是否在场。关掉它不是把半颗窗口空出来，而是让「抽人」独占整窗，
+    /// 因此字号也得按一颗重算（见 <see cref="ApplyLayoutScale"/>）。
+    /// </summary>
+    private bool _multiVisible = true;
+
     public RollCallWindow()
     {
         InitializeComponent();
@@ -80,10 +86,11 @@ public partial class RollCallWindow : Window
         : 1;
 
     /// <summary>把设置页的尺寸与底色不透明度应用到窗口。</summary>
-    public void ApplySettings(PluginSettings settings)
+    public void ApplySettings(PluginSettings settings, bool multiEnabled)
     {
         Width = Math.Clamp(settings.RollCallWidth, 50, 1280);
         Height = Math.Clamp(settings.RollCallHeight, 20, 640);
+        ApplyMultiButton(multiEnabled);
         ApplyLayoutScale();
         // 真毛玻璃观感：设置值压缩到磨砂层 0.15–0.55、白色 tint 0.05–0.3，
         // 背景内容透过模糊层而不是被白雾盖住；纯实底留给不支持亚克力的回退色。
@@ -96,6 +103,18 @@ public partial class RollCallWindow : Window
     }
 
     /// <summary>
+    /// 只在场与否真的变了时才动 UI。「多人」藏起来后让「抽人」跨满两列：
+    /// 跨列会把列间隔一起吃掉，所以不必改列定义，也不会留下半窗空白。
+    /// </summary>
+    private void ApplyMultiButton(bool visible)
+    {
+        if (_multiVisible == visible) return;
+        _multiVisible = visible;
+        MultiButton.IsVisible = visible;
+        Grid.SetColumnSpan(SingleButton, visible ? 1 : 2);
+    }
+
+    /// <summary>
     /// 边距、间隔与字号跟着窗口尺寸缩：12/8/16 那套是给默认大小用的，
     /// 窗口收到 50×20 时若不动它们，两颗按钮里只剩裁掉的字。
     /// 常态尺寸下取到的是上限，观感与原来一致。
@@ -104,11 +123,13 @@ public partial class RollCallWindow : Window
     {
         var x = Math.Clamp(Width / 20, 1, 12);
         var y = Math.Clamp(Height / 8, 1, 12);
-        var spacing = Math.Clamp(x, 2, 8);
+        // 只剩一颗按钮时没有列间可言，跨列的那条间隔也已算进按钮宽度里。
+        var spacing = _multiVisible ? Math.Clamp(x, 2, 8) : 0;
         Layout.Margin = new Thickness(x, y, x, y);
         Layout.ColumnSpacing = spacing;
-        // 一个字约占 1 号字高的宽度、一行约 1.45 倍，两个字的按钮要装下就得同时让宽和高。
-        var font = Math.Clamp(Math.Min((Width - 2 * x - spacing) / 4.4, (Height - 2 * y) / 1.45), 7, 16);
+        // 一个字约占 1 号字高的宽度、一行约 1.45 倍，两个字的按钮要装下就得同时让宽和高；
+        // 除数是 4.4 还是 2.2 取决于横排里挤着两颗还是一颗按钮。
+        var font = Math.Clamp(Math.Min((Width - 2 * x - spacing) / (_multiVisible ? 4.4 : 2.2), (Height - 2 * y) / 1.45), 7, 16);
         SingleText.FontSize = font;
         MultiText.FontSize = font;
         MultiShell.CornerRadius = new CornerRadius(Math.Clamp(font / 2, 2, 8));

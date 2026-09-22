@@ -8,6 +8,8 @@ export default defineEventHandler(async (event) => {
   if (!tag) throw createError({ statusCode: 404, message: "标签不存在。" });
   const usedByPolicy = db.prepare("SELECT COUNT(*) count FROM policy_assignments WHERE scope_type='tag' AND scope_id=? AND superseded_at IS NULL").get(id) as { count: number };
   if (usedByPolicy.count > 0) throw createError({ statusCode: 409, message: "该标签仍被活动策略引用，请先替换策略。" });
+  const usedByPluginTarget = db.prepare("SELECT COUNT(*) count FROM plugin_update_targets WHERE scope_type='tag' AND scope_id=?").get(id) as { count: number };
+  if (usedByPluginTarget.count > 0) throw createError({ statusCode: 409, message: "该标签仍被插件升级目标引用，请先取消目标。" });
   withAuditedTransaction(
     (database) => {
       database.prepare("DELETE FROM device_tags WHERE tag_id=?").run(id);
