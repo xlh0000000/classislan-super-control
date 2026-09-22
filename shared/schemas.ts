@@ -304,6 +304,16 @@ export const PLUGIN_UPSTREAM_MAX_INTERVAL_MINUTES = 1440;
 /** 前缀条数与单条长度都要封顶：这些字符串会直接拼进出站请求的 URL。 */
 export const MAX_PLUGIN_UPSTREAM_PROXIES = 8;
 export const MAX_PLUGIN_UPSTREAM_PROXY_LENGTH = 300;
+/**
+ * 预置镜像：装好就有能用的加速地址，不必让学校管理员挨个手填。
+ * 三家都是第三方加速站，随时可能换域或停运，界面上一律可以删掉换成学校自己的。
+ * 2026-09-22 用与服务端同一条出站路径（node fetch）实测，三家都能取回 v0.1.7 的 .cipx（173777 字节）：
+ * `gh-proxy.com` 连 api.github.com 也代理，排第一能让检查也经镜像完成；
+ * `ghfast.top` 与 `ghproxy.net` 不接 api.github.com（回 403「Invalid input.」），只在拉包这一步出力。
+ * ghfast.top 取回的字节 sha256 与 GitHub 为该附件公布的 digest 一致（97da195d…2d8aa4），其余两家只核对了大小。
+ * 别拿 curl 复现这组结论：undici 不读代理环境变量，两者的出站通路不是一回事。
+ */
+export const PLUGIN_UPSTREAM_DEFAULT_PROXIES = ["https://gh-proxy.com/", "https://ghfast.top/", "https://ghproxy.net/"];
 
 /**
  * 镜像前缀必须是一条能直接拼在目标 URL 前面的 https 地址。

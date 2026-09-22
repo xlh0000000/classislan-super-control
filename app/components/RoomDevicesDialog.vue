@@ -6,7 +6,7 @@ const props = withDefaults(defineProps<{
 }>(), { selectable: true });
 const emit = defineEmits<{ close: []; changed: []; inspect: [id: string] }>();
 const toast = useToast();
-const { selection, toggleDevice } = useTargetSelection();
+const { deviceIds: selectedIds, scopeCoveredIds, toggleDevice } = useTargetSelection();
 const { can } = useSession();
 /** 教室与设备的归属关系由 devices.write 管，只读账号进来是看设备，不是调座位。 */
 const canEdit = computed(() => can("devices.write"));
@@ -53,8 +53,8 @@ async function move(deviceIds: string[], add: boolean) {
     <article class="block">
       <h3>本教室设备 <small>{{ assigned.length }}</small></h3>
       <ul>
-        <li v-for="device in assignedList" :key="device.id" :data-on="selection.deviceIds.includes(device.id)">
-          <label class="pick" :aria-hidden="!selectable"><input v-if="selectable" type="checkbox" :checked="selection.deviceIds.includes(device.id)" @change="toggleDevice(device.id)"></label>
+        <li v-for="device in assignedList" :key="device.id" :data-on="selectedIds.includes(device.id)">
+          <label class="pick" :aria-hidden="!selectable"><input v-if="selectable" type="checkbox" :checked="selectedIds.includes(device.id)" :disabled="scopeCoveredIds.has(device.id)" @change="toggleDevice(device.id)"></label>
           <i class="dot" :data-online="device.online" />
           <button type="button" class="name" @click="emit('inspect', device.id)">{{ device.name }}</button>
           <small>{{ device.orgName }} · {{ device.id.slice(0, 8) }}</small>
@@ -66,8 +66,8 @@ async function move(deviceIds: string[], add: boolean) {
     <article v-if="canEdit" class="block">
       <h3>可加入的设备 <small>{{ candidates.length }}</small></h3>
       <ul>
-        <li v-for="device in candidates" :key="device.id" :data-on="selection.deviceIds.includes(device.id)">
-          <label class="pick" :aria-hidden="!selectable"><input v-if="selectable" type="checkbox" :checked="selection.deviceIds.includes(device.id)" @change="toggleDevice(device.id)"></label>
+        <li v-for="device in candidates" :key="device.id" :data-on="selectedIds.includes(device.id)">
+          <label class="pick" :aria-hidden="!selectable"><input v-if="selectable" type="checkbox" :checked="selectedIds.includes(device.id)" :disabled="scopeCoveredIds.has(device.id)" @change="toggleDevice(device.id)"></label>
           <i class="dot" :data-online="device.online" />
           <button type="button" class="name" @click="emit('inspect', device.id)">{{ device.name }}</button>
           <small>{{ device.orgName }} · {{ device.id.slice(0, 8) }}</small>

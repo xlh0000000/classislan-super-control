@@ -43,7 +43,11 @@ export function useTargetSelection() {
     return ids;
   }
 
-  const deviceIds = computed(() => {
+  /**
+   * 被范围（全校 / 组织 / 标签）盖到的设备。
+   * 单独留着是因为这类设备不是逐台勾上来的：界面上要显示成已选，却不能在某一台上把它取消掉。
+   */
+  const scopeCoveredIds = computed(() => {
     const ids = new Set<string>();
     if (selection.value.school) for (const device of enabledDevices.value) ids.add(device.id);
     const subtree = subtreeIds(selection.value.orgNodeIds);
@@ -52,6 +56,11 @@ export function useTargetSelection() {
       if (device.orgNodeId && subtree.has(device.orgNodeId)) ids.add(device.id);
       if (device.tagIds.some((tagId) => tags.has(tagId))) ids.add(device.id);
     }
+    return ids;
+  });
+
+  const deviceIds = computed(() => {
+    const ids = new Set(scopeCoveredIds.value);
     for (const id of selection.value.deviceIds) ids.add(id);
     return [...ids].sort();
   });
@@ -114,7 +123,7 @@ export function useTargetSelection() {
   }
 
   return {
-    selection, devices, org, enabledDevices, deviceIds, targets, count, empty, scopes, summary,
+    selection, devices, org, enabledDevices, deviceIds, scopeCoveredIds, targets, count, empty, scopes, summary,
     subtreeIds, toggleSchool, toggleOrg, toggleTag, toggleDevice, clear, singleTarget, restore, persist,
   };
 }

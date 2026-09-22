@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import {
   CONTROL_PLUGIN_ID,
   MAX_PLUGIN_RELEASE_BYTES,
+  PLUGIN_UPSTREAM_DEFAULT_PROXIES,
   PLUGIN_UPSTREAM_DEFAULT_REPO,
   normalizePluginProxyPrefix,
   pluginProxyPrefixError,
@@ -36,7 +37,7 @@ export type PluginUpstreamState = {
 
 const CONFIG_KEY = "plugin.upstream.config";
 const STATE_KEY = "plugin.upstream.state";
-const DEFAULT_CONFIG: PluginUpstreamConfig = { enabled: true, repo: PLUGIN_UPSTREAM_DEFAULT_REPO, proxies: [], intervalMinutes: 30 };
+const DEFAULT_CONFIG: PluginUpstreamConfig = { enabled: true, repo: PLUGIN_UPSTREAM_DEFAULT_REPO, proxies: [...PLUGIN_UPSTREAM_DEFAULT_PROXIES], intervalMinutes: 30 };
 const API_BASE = "https://api.github.com/repos/";
 /** 上游附件名由发布流程决定，写死在这里：换名等于换约定，不该由网络那侧说了算。 */
 const PLUGIN_RELEASE_ASSET_NAME = "ClassIsland.Control.Plugin.cipx";
@@ -44,6 +45,8 @@ const PLUGIN_RELEASE_ASSET_NAME = "ClassIsland.Control.Plugin.cipx";
 const TRUSTED_DOWNLOAD_HOST_SUFFIXES = ["github.com", "githubusercontent.com"];
 /** 检查一次最多占 12 秒；下载一份包最多占 90 秒。超了就当这次没成功，留给下一轮。 */
 const CHECK_TIMEOUT_MS = 12_000;
+/** 预置镜像里总有一两家是死的，走镜像的检查只给它 6 秒，别让手点「立即检查」的人陪着等满 12 秒。 */
+const MIRROR_CHECK_TIMEOUT_MS = 6_000;
 const DOWNLOAD_TIMEOUT_MS = 90_000;
 /** 出站失败的常见错误码翻成人话：这句会直接显示在管理页上，不能是 undici 的内部黑话。 */
 const NETWORK_ERROR_LABELS: Record<string, string> = {
@@ -76,14 +79,14 @@ function writeStateValue(db: Database.Database, key: string, value: string, at =
 /** 配置坏了也不能让页面打不开：逐字段回落到默认值，只认合规则的镜像前缀。 */
 export function readPluginUpstreamConfig(db: Database.Database): PluginUpstreamConfig {
   const raw = readStateValue(db, CONFIG_KEY);
-  if (!raw) return { ...DEFAULT_CONFIG, proxies: [] };
+  if (!raw) return { ...DEFAULT_CONFIG, proxies: [...PLUGIN_UPSTREAM_DEFAULT_PROXIES] };
   let parsed: Partial<PluginUpstreamConfigInput> | null = null;
   try {
     parsed = JSON.parse(raw) as Partial<PluginUpstreamConfigInput>;
   } catch {
     parsed = null;
   }
-  if (!parsed) return { ...DEFAULT_CONFIG, proxies: [] };
+  if (!parsed) return { ...DEFAULT_CONFIG, proxies: [...PLUGIN_UPSTREAM_DEFAULT_PROXIES] };
   const interval = Number(parsed.intervalMinutes);
   return {
     enabled: parsed.enabled === true,
@@ -207,7 +210,7 @@ export async function fetchPluginUpstreamRelease(
     try {
       const response = await fetchImpl(candidate.url, {
         headers: { accept: "application/vnd.github+json", "user-agent": "classisland-control-server" },
-        signal: AbortSignal.timeout(CHECK_TIMEOUT_MS),
+        signal: AbortSignal.timeout(candidate.via === "proxy" ? MIRROR_CHECK_TIMEOUT_MS : CHECK_TIMEOUT_MS),
         redirect: "error",
       });
       if (!response.ok) {

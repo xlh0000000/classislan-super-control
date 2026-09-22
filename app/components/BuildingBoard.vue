@@ -11,8 +11,10 @@ const props = withDefaults(defineProps<{
   rooms: Room[];
   devices: DeviceLite[];
   selectedIds: string[];
+  /** 被全校 / 组织 / 标签这类范围盖住的设备：显示成已选，但逐台取消表达不出来。 */
+  lockedIds?: Set<string>;
   selectable?: boolean;
-}>(), { selectable: true });
+}>(), { selectable: true, lockedIds: () => new Set<string>() });
 const emit = defineEmits<{ toggle: [ids: string[]]; marquee: [ids: string[], additive: boolean]; openRoom: [id: string]; inspect: [id: string]; changed: [] }>();
 /** 当前楼栋由页面持有：工具栏的「全选本楼栋」要知道看的是哪一栋。 */
 const activeId = defineModel<string | null>("activeBuilding", { default: null });
@@ -37,8 +39,17 @@ const floorDeviceIds = (floorId: string) => roomsOf(floorId).flatMap((room) => r
 const roomDevices = (room: Room) =>
   room.deviceIds.map((id) => deviceById.value.get(id)).filter((device): device is DeviceLite => !!device);
 const onlineCount = (ids: string[]) => ids.filter((id) => deviceById.value.get(id)?.online).length;
-const allSelected = (ids: string[]) => ids.length > 0 && ids.every((id) => props.selectedIds.includes(id));
-const someSelected = (ids: string[]) => !allSelected(ids) && ids.some((id) => props.selectedIds.includes(id));
+/** 勾选只管已知且启用的设备：停用设备既不算全选也不算半选。 */
+const pickable = (ids: string[]) => ids.filter((id) => deviceById.value.get(id)?.disabled === false);
+const allSelected = (ids: string[]) => { const list = pickable(ids); return list.length > 0 && list.every((id) => props.selectedIds.includes(id)); };
+const someSelected = (ids: string[]) => { const list = pickable(ids); return !allSelected(list) && list.some((id) => props.selectedIds.includes(id)); };
+/** 整组都被范围（全校 / 组织 / 标签）盖住：已经是选中状态，逐台取消在这份目标里表达不出来。 */
+const scopeLocked = (ids: string[]) => { const list = pickable(ids); return list.length > 0 && list.every((id) => props.lockedIds.has(id)); };
+/** 卡片那一下：能改勾选就改勾选，被范围盖住或本来不可选时退回打开教室，别点成没反应。 */
+function onRoomClick(room: Room) {
+  if (props.selectable && !scopeLocked(room.deviceIds)) emit("toggle", pickable(room.deviceIds));
+  else emit("openRoom", room.id);
+}
 
 /** 增删改都直接在看板上就地完成，不再进二级弹窗里找按钮。 */
 const creating = ref<{ kind: Kind; parentId: string | null } | null>(null);
@@ -220,7 +231,9 @@ function onBandUp(event: PointerEvent) {
   // 起终点几乎重合的那一下还是单击，别把已有选择清掉。
   if (Math.abs(b.x1 - b.x0) < 4 && Math.abs(b.y1 - b.y0) < 4) return;
   const rooms = new Set(hits);
-  const ids = [...new Set(props.rooms.filter((room) => rooms.has(room.id)).flatMap((room) => room.deviceIds))];
+  const ids = pickable([...new Set(props.rooms.filter((room) => rooms.has(room.id)).flatMap((room) => room.deviceIds))]);
+  // 一圈空白什么也没框到：这不是一次选择，别把已经选好的目标清掉。
+  if (!ids.length) return;
   emit("marquee", ids, event.shiftKey);
 }
 function onBandCancel(event: PointerEvent) {
@@ -291,7 +304,8 @@ onBeforeUnmount(stopBandLoop);
             type="checkbox"
             :checked="allSelected(floorDeviceIds(floor.id))"
             :indeterminate="someSelected(floorDeviceIds(floor.id))"
-            @click.stop="emit('toggle', floorDeviceIds(floor.id))"
+            :disabled="scopeLocked(floorDeviceIds(floor.id))"
+            @click.stop="emit('toggle', pickable(floorDeviceIds(floor.id)))"
           >
           <input
             v-if="isEditing('floors', floor.id)"
@@ -325,10 +339,11 @@ onBeforeUnmount(stopBandLoop);
                 type="checkbox"
                 :checked="allSelected(room.deviceIds)"
                 :indeterminate="someSelected(room.deviceIds)"
-                @click.stop="emit('toggle', room.deviceIds)"
+                :disabled="scopeLocked(room.deviceIds)"
+                @click.stop="emit('toggle', pickable(room.deviceIds))"
               >
             </label>
-            <div class="room" @click="selectable ? emit('toggle', room.deviceIds) : emit('openRoom', room.id)">
+            <div class="room" @click="onRoomClick(room)">
               <button
                 v-if="!isEditing('rooms', room.id)"
                 type="button"

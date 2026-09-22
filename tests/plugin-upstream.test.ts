@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { migrate } from "../server/migrations";
-import { pluginProxyPrefixError, pluginUpstreamConfigSchema } from "../shared/schemas";
+import { PLUGIN_UPSTREAM_DEFAULT_PROXIES, pluginProxyPrefixError, pluginUpstreamConfigSchema } from "../shared/schemas";
 import { sha256 } from "../server/utils/security";
 import {
   advancePluginUpstream,
@@ -182,6 +182,17 @@ describe("上游版本：镜像地址", () => {
     ]);
     expect(candidates.map((item) => item.via)).toEqual(["proxy", "proxy", "direct"]);
   });
+
+  it("没配过时预置镜像就在候选列表里，且都排在直连前面", () => {
+    const db = createDb();
+    const config = readPluginUpstreamConfig(db);
+    expect(config.proxies).toEqual([...PLUGIN_UPSTREAM_DEFAULT_PROXIES]);
+    const candidates = pluginUpstreamCandidates(config);
+    expect(candidates[candidates.length - 1]).toEqual({ url: API_URL, via: "direct" });
+    expect(candidates.slice(0, -1).map((item) => item.url))
+      .toEqual(PLUGIN_UPSTREAM_DEFAULT_PROXIES.map((prefix) => `${prefix}${API_URL}`));
+    db.close();
+  });
 });
 
 describe("上游版本：抓取", () => {
@@ -230,6 +241,13 @@ describe("上游版本：定时巡检与视图", () => {
     writePluginUpstreamConfig(db, { ...configInput, enabled: false });
     expect(readPluginUpstreamConfig(db).enabled).toBe(false);
     expect(pluginUpstreamDue(db, NOW)).toBe(false);
+    db.close();
+  });
+
+  it("存过的空列表保持空着：预置只服务于从没配过的安装，不替管理员把镜像填回去", () => {
+    const db = createDb();
+    writePluginUpstreamConfig(db, configInput);
+    expect(readPluginUpstreamConfig(db).proxies).toEqual([]);
     db.close();
   });
 

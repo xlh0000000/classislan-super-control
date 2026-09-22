@@ -7,7 +7,7 @@ const { data: layout, refresh } = await useFetch<{ buildings: Building[]; floors
   "/api/v1/admin/layout",
   { key: "cic-layout", default: () => ({ buildings: [], floors: [], rooms: [] }) },
 );
-const { devices, selection, enabledDevices, count, empty, clear, toggleSchool } = useTargetSelection();
+const { devices, selection, enabledDevices, deviceIds: selectedDeviceIds, scopeCoveredIds, count, empty, clear, toggleSchool } = useTargetSelection();
 const { user, can } = useSession();
 /** 多选只为发布服务：策略与任务都进不去的账号，不该看见选了目标却无处可用。 */
 const canPublish = computed(() => can("policies.write") || can("configurations.write") || can("tasks.write"));
@@ -41,20 +41,29 @@ function toggleDevices(ids: string[]) {
   selection.value = { ...selection.value, deviceIds: next };
 }
 
-/** 框选给的是一组确定的设备：不叠 Shift 就整组换掉手选清单，组织与标签那两层范围不动。 */
+/** 框选给的是一组确定的设备：不叠 Shift 就把整份目标换成这批（范围勾着一台不动它的话，框完看着什么都没变，最容易发错）。 */
 function marqueeDevices(ids: string[], additive: boolean) {
+  if (!additive) {
+    selection.value = { school: false, orgNodeIds: [], tagIds: [], deviceIds: ids };
+    return;
+  }
   const current = selection.value.deviceIds;
-  selection.value = { ...selection.value, deviceIds: additive ? [...new Set([...current, ...ids])] : ids };
+  selection.value = { ...selection.value, deviceIds: [...new Set([...current, ...ids])] };
 }
 
 function openRoom(id: string) { roomId.value = id; }
-/** 当前楼栋的全部设备（教师只看得到放了设备的那几间）。 */
+const deviceById = computed(() => new Map(devices.value.map((device) => [device.id, device])));
+/** 当前楼栋里可勾选的设备（教师只看得到放了设备的那几间；停用设备既不选上也不算半选）。 */
 const buildingDeviceIds = computed(() => {
   const tree = shown.value;
   const floorIds = new Set(tree.floors.filter((floor) => floor.buildingId === activeBuilding.value).map((floor) => floor.id));
-  return [...new Set(tree.rooms.filter((room) => floorIds.has(room.floorId)).flatMap((room) => room.deviceIds))];
+  const ids = [...new Set(tree.rooms.filter((room) => floorIds.has(room.floorId)).flatMap((room) => room.deviceIds))];
+  return ids.filter((id) => deviceById.value.get(id)?.disabled === false);
 });
-const buildingAllSelected = computed(() => buildingDeviceIds.value.length > 0 && buildingDeviceIds.value.every((id) => selection.value.deviceIds.includes(id)));
+const selectedIdSet = computed(() => new Set(selectedDeviceIds.value));
+const buildingAllSelected = computed(() => buildingDeviceIds.value.length > 0 && buildingDeviceIds.value.every((id) => selectedIdSet.value.has(id)));
+/** 整栋都被范围盖住时，逐台取消是表达不出来的：全选按钮该让位给旁边那个范围勾选。 */
+const buildingScopeLocked = computed(() => buildingDeviceIds.value.length > 0 && buildingDeviceIds.value.every((id) => scopeCoveredIds.value.has(id)));
 /** 单击设备看设备详情（内含生效策略明细入口）；先关掉教室弹窗，避免叠层。 */
 function inspect(id: string) { roomId.value = null; inspectId.value = id; }
 async function changed() { await refresh(); }
@@ -64,7 +73,7 @@ async function changed() { await refresh(); }
   <PageHeading kicker="按楼栋管设备" title="楼栋部署">
     <div v-if="canPublish" class="picked">
       <span class="count">{{ empty ? "未选目标" : `已选 ${count} 台` }}</span>
-      <button type="button" class="ghost" :disabled="!buildingDeviceIds.length" @click="toggleDevices(buildingDeviceIds)">{{ buildingAllSelected ? "取消全选本楼栋" : "全选本楼栋" }}</button>
+      <button type="button" class="ghost" :disabled="!buildingDeviceIds.length || buildingScopeLocked" @click="toggleDevices(buildingDeviceIds)">{{ buildingAllSelected ? "取消全选本楼栋" : "全选本楼栋" }}</button>
       <label class="all" :data-on="selection.school ? 'true' : 'false'"><input type="checkbox" :checked="selection.school" @change="toggleSchool()"><span>全校</span><small>{{ enabledDevices.length }}</small></label>
       <button type="button" class="solid" @click="showTargets = true">选择目标</button>
       <template v-if="!empty">
@@ -82,7 +91,8 @@ async function changed() { await refresh(); }
     :floors="shown.floors"
     :rooms="shown.rooms"
     :devices="devices"
-    :selected-ids="selection.deviceIds"
+    :selected-ids="selectedDeviceIds"
+    :locked-ids="scopeCoveredIds"
     :selectable="canPublish"
     @toggle="toggleDevices"
     @marquee="marqueeDevices"
