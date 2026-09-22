@@ -147,7 +147,8 @@ jobs:
         run: |
           manifest=$(sed -n 's/^version:[[:space:]]*//p' plugin/ClassIsland.Control.Plugin/manifest.yml | tr -d '\r' | head -n1)
           pkg=$(node -p "require('./package.json').version")
-          # 服务端展示值构建期直接取 package.json，不再单独校对；插件上报的版本仍是手写，逐处比对。
+          # 服务端展示值构建期直接取 package.json；插件上报的版本读 manifest.yml 的 plugin.Version，两处都不用手写。
+          # 下面这条只剩防回归的作用：万一有人把 x.y.z 字面量又写回那两个文件，这里会告警。
           stale=$(grep -ohE '"[0-9]+\.[0-9]+\.[0-9]+"' plugin/ClassIsland.Control.Plugin/Services/CrashReporter.cs plugin/ClassIsland.Control.Plugin/Services/PollingHostedService.cs | sort -u | grep -v "^\"$pkg\"$" | tr '\n' ' ')
           tag="${GITHUB_REF_NAME#v}"
           norm() { local IFS=.; read -r a b c d <<< "$1"; echo "${a:-0}.${b:-0}.${c:-0}.${d:-0}"; }
