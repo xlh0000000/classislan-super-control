@@ -89,7 +89,7 @@ onMounted(() => {
   <div class="shell">
     <aside class="rail">
       <NuxtLink class="brand" to="/">
-        <span class="mark">CI</span>
+        <span class="mark"><AppLockup /></span>
         <div><strong>CLASSISLAND</strong><small>集控台 CONTROL</small></div>
       </NuxtLink>
       <nav aria-label="主导航">
@@ -149,16 +149,11 @@ main { min-width: 0; padding: 34px 44px 76px; }
 }
 .brand { display: flex; align-items: center; gap: 12px; padding: 0 4px 30px; text-decoration: none; }
 .brand .mark {
-  display: grid;
-  place-items: center;
+  display: block;
   width: 40px;
   height: 40px;
   flex: none;
-  background: var(--fill);
-  color: var(--fill-ink);
-  font-size: 13px;
-  font-weight: 750;
-  letter-spacing: 1px;
+  color: var(--ink);
 }
 .brand div { display: grid; gap: 3px; }
 .brand strong { font-size: 16px; font-weight: 750; letter-spacing: 1.2px; }

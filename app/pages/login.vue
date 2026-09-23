@@ -18,8 +18,7 @@ async function submit() {
   <main class="login-shell">
     <section class="context">
       <span class="micro">管理入口</span>
-      <h1>CLASSISLAND</h1>
-      <div class="sub">集控台 · CONTROL</div>
+      <h1><AppLockup /></h1>
       <i class="rule" />
       <p>账号由管理员发放。只有授权账号能登录，所有改动都会留记录。</p>
     </section>
@@ -35,8 +34,7 @@ async function submit() {
 <style scoped>
 .login-shell { min-height: 100vh; display: grid; grid-template-columns: 1.2fr .8fr; background: var(--canvas); }
 .context { display: flex; flex-direction: column; justify-content: center; padding: clamp(40px, 7vw, 96px); border-right: 1px solid var(--line); }
-.context h1 { margin: 30px 0 0; font-size: clamp(40px, 6vw, 62px); font-weight: 750; letter-spacing: 2.4px; line-height: 1.05; }
-.sub { margin-top: 10px; font-size: 19px; font-weight: 600; letter-spacing: 0.6px; }
+.context h1 { margin: 30px 0 0; width: clamp(210px, 26vw, 320px); color: var(--ink); }
 .rule { display: block; height: 2px; width: 100%; max-width: 420px; margin-top: 32px; background: var(--ink); }
 .context p { max-width: 480px; margin: 26px 0 0; color: var(--ink-soft); font-size: 13px; line-height: 1.9; }
 form { align-self: center; width: min(360px, 100%); margin: 34px auto; }

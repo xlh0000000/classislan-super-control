@@ -2,6 +2,8 @@
 
 # ClassIsland Control
 
+![ClassIsland Control 界面一览](doc/assets/readme-hero.png)
+
 **单学校、千台以内的 ClassIsland 集中管理控制平面**
 
 ![Node](https://img.shields.io/badge/Node-%E2%89%A522.22.2-339933?logo=nodedotjs&logoColor=white)
