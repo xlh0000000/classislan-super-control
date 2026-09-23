@@ -107,15 +107,10 @@ scripts/  备份与恢复
 - **权限**：「单角色 + 单组织水位线」模型，范围外目标按不存在返回 404。
 - **备份**：bundle 含 SQLite 在线快照、服务端签名密钥与逐文件 SHA-256 清单；恢复必须离线执行，签名私钥与数据库必须一起恢复。
 
-## 🎨 界面规范
-
-- **配色**：白色为主、蓝色为辅（`--accent` `#2563eb`）；卡片纯白、无阴影描边；不使用渐变，磨砂只用于跨层顶栏、抽屉与对话框。
-- **交互**：标题统一 `PageHeading`，破坏性操作统一 `ConfirmDialog`，过程反馈统一 `useToast`，不新增浏览器原生弹窗。
-- **令牌**：设计令牌集中在 `app/assets/css/main.css`；文案中文优先，由 `@nuxtjs/i18n` 管理。
-
 ## 📄 相关文档
 
 - [平台使用文档](doc/usage.md)
+- [界面规范](doc/ui-style.md)
 - [设备插件说明](plugin/ClassIsland.Control.Plugin/README.md)
 - [协议向量](shared/protocol-vectors.json) · [JCS 向量](shared/jcs-vectors.json)
 
