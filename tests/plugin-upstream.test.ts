@@ -90,7 +90,7 @@ function storedZip(entries: { name: string; data: Buffer }[]): Buffer {
 }
 
 function cipx(id: string, version: string) {
-  const manifest = Buffer.from(`id: ${id}\nname: ClassIsland 集控\nversion: ${version}\n`, "utf8");
+  const manifest = Buffer.from(`id: ${id}\nname: Classisland Super Control\nversion: ${version}\n`, "utf8");
   return storedZip([{ name: "manifest.yml", data: manifest }, { name: "ClassIsland.Control.Plugin.dll", data: Buffer.alloc(2048, 7) }]);
 }
 

@@ -1,8 +1,8 @@
 <div align="center">
 
-# ClassIsland Control
+# Classisland Super Control
 
-![ClassIsland Control 界面一览](doc/assets/readme-hero.png)
+![Classisland Super Control 界面一览](doc/assets/readme-hero.png)
 
 **单学校、千台以内的 ClassIsland 集中管理控制平面**
 
@@ -120,4 +120,4 @@ scripts/  备份与恢复
 
 ---
 
-<div align="center"><sub>GPL-3.0 · ClassIsland Control</sub></div>
+<div align="center"><sub>GPL-3.0 · Classisland Super Control</sub></div>

@@ -1,10 +1,10 @@
 id: tech.classisland.control
-name: ClassIsland 集控
-summary: ClassIsland Control 设备端插件
+name: Classisland Super Control
+summary: Classisland Super Control 设备端插件
 manifestVersion: 1
 description: 使用稳定公开插件 API 接收已验证策略与类型化远程任务。
 entranceAssembly: "ClassIsland.Control.Plugin.dll"
-url: https://github.com/ClassIslandControl/ClassIslandControl
+url: https://github.com/xlh0000000/classisland-super-control
 apiVersion: 2.0.0.0
 version: 0.1.8.0
-author: ClassIsland Control
+author: Classisland Super Control

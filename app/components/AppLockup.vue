@@ -2,7 +2,7 @@
 import { LOCKUP_PATH } from "~/assets/brand/lockup";
 
 /** 标志本体：侧栏方块与登录页都用它，颜色交给 currentColor 跟着主题走。 */
-const { label = "ClassIsland Super Control" } = defineProps<{ label?: string }>();
+const { label = "Classisland Super Control" } = defineProps<{ label?: string }>();
 </script>
 
 <template>

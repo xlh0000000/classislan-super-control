@@ -12,7 +12,7 @@ namespace ClassIsland.Control.Plugin.Views;
 // 贡献者：威廉（课表上传开关与状态、http(s) 放行）
 
 // 归入“关于”类别：策略锁定“应用设置”时本页仍需可达，否则设备状态与锁定项将无处查看。
-[SettingsPageInfo("classisland-control.connection", "ClassIsland 集控", "\uedc7", "\uedc6", SettingsPageCategory.About)]
+[SettingsPageInfo("classisland-control.connection", "Classisland Super Control", "\uedc7", "\uedc6", SettingsPageCategory.About)]
 public partial class ControlSettingsPage : SettingsPageBase
 {
     private static readonly IBrush Muted = new SolidColorBrush(Color.Parse("#737C74"));

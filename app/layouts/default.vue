@@ -90,7 +90,7 @@ onMounted(() => {
     <aside class="rail">
       <NuxtLink class="brand" to="/">
         <span class="mark"><AppLockup /></span>
-        <div><strong>CLASSISLAND</strong><small>集控台 CONTROL</small></div>
+        <div><strong>CLASSISLAND</strong><small>集控台 SUPER CONTROL</small></div>
       </NuxtLink>
       <nav aria-label="主导航">
         <template v-for="group in visibleGroups" :key="group.title">

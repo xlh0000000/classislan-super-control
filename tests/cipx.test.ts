@@ -54,24 +54,24 @@ function makeZip(entries: Entry[]): Buffer {
 
 const MANIFEST = Buffer.from([
   "id: tech.classisland.control",
-  "name: ClassIsland 集控",
+  "name: Classisland Super Control",
   "manifestVersion: 1",
   'entranceAssembly: "ClassIsland.Control.Plugin.dll"',
   "apiVersion: 2.0.0.0",
   "version: 0.1.7.0",
-  "author: ClassIsland Control",
+  "author: Classisland Super Control",
   "",
 ].join("\n"), "utf8");
 
 describe("cipx 清单解析", () => {
   it("stored 与 deflate 两种压缩都能读出 id 与版本", () => {
     expect(readCipxManifest(makeZip([{ name: "manifest.yml", data: MANIFEST }]))).toEqual({
-      id: "tech.classisland.control", version: "0.1.7.0", name: "ClassIsland 集控",
+      id: "tech.classisland.control", version: "0.1.7.0", name: "Classisland Super Control",
     });
     expect(readCipxManifest(makeZip([
       { name: "ClassIsland.Control.Plugin.dll", data: Buffer.alloc(2048, 7) },
       { name: "manifest.yml", data: MANIFEST, method: 8 },
-    ]))).toEqual({ id: "tech.classisland.control", version: "0.1.7.0", name: "ClassIsland 集控" });
+    ]))).toEqual({ id: "tech.classisland.control", version: "0.1.7.0", name: "Classisland Super Control" });
   });
 
   it("缺清单、不是 zip、清单少字段都拒绝", () => {

@@ -1,4 +1,4 @@
-# ClassIsland Control 使用文档
+# Classisland Super Control 使用文档
 
 面向学校信息教师与运维：从一套空平台，到管住一批教室里的 ClassIsland。文中按钮名、页签名照实际界面写。
 

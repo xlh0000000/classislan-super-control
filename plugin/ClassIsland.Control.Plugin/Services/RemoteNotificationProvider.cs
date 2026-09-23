@@ -4,7 +4,7 @@ using ClassIsland.Core.Models.Notification;
 
 namespace ClassIsland.Control.Plugin.Services;
 
-[NotificationProviderInfo("fcb1d3bc-bcc7-43d9-b850-7f56b8f55f7b", "ClassIsland 集控", "lucide()", "显示来自已认证控制平面的提醒")]
+[NotificationProviderInfo("fcb1d3bc-bcc7-43d9-b850-7f56b8f55f7b", "Classisland Super Control", "lucide()", "显示来自已认证控制平面的提醒")]
 public sealed class RemoteNotificationProvider : NotificationProviderBase
 {
     /// <summary>

@@ -125,7 +125,7 @@ public sealed class TimeOffsetService(
             DeactivateDaily();
             var value = Clamp(Math.Round(seconds, 3));
             lock (_gate) _mode = TimeOffsetMode.Fixed;
-            bridge.WriteTimeOffsetSeconds(value, "ClassIsland Control 策略下发时间偏移");
+            bridge.WriteTimeOffsetSeconds(value, "Classisland Super Control 策略下发时间偏移");
             status.TimeOffsetApplied($"固定偏移 {Format(value)}");
             return;
         }
@@ -149,7 +149,7 @@ public sealed class TimeOffsetService(
         if (current is not { } applied) return;
         var target = Clamp(Math.Round(applied + error, 3));
         if (Math.Abs(target - applied) < AutoDeadbandSeconds) return;
-        if (!bridge.WriteTimeOffsetSeconds(target, "ClassIsland Control 自动时间偏移")) return;
+        if (!bridge.WriteTimeOffsetSeconds(target, "Classisland Super Control 自动时间偏移")) return;
         status.TimeOffsetApplied($"自动对齐集控端时钟（{Format(target)}）");
         logger.LogInformation("Applied automatic time offset {OffsetSeconds}s from the control plane clock.", target);
     }
@@ -180,7 +180,7 @@ public sealed class TimeOffsetService(
         if (bridge.SupportsAutoAdjust && bridge.ReadTimeAutoAdjustEnabled() == true)
         {
             _hostAutoAdjustBaseline = true;
-            bridge.WriteTimeAutoAdjustEnabled(false, "ClassIsland Control 接管每日自动偏移");
+            bridge.WriteTimeAutoAdjustEnabled(false, "Classisland Super Control 接管每日自动偏移");
         }
         WriteDailyValue(announce: true);
     }
@@ -196,7 +196,7 @@ public sealed class TimeOffsetService(
         if (wasActive && _hostAutoAdjustBaseline == true)
         {
             _hostAutoAdjustBaseline = null;
-            bridge.WriteTimeAutoAdjustEnabled(true, "ClassIsland Control 交还每日自动偏移开关");
+            bridge.WriteTimeAutoAdjustEnabled(true, "Classisland Super Control 交还每日自动偏移开关");
         }
     }
 
@@ -213,7 +213,7 @@ public sealed class TimeOffsetService(
         }
         var days = Math.Max(0, (int)Math.Floor((DateTime.Today - anchor.Date).TotalDays));
         var value = Clamp(Math.Round(baseSeconds + perDay * days, 3));
-        var written = bridge.WriteTimeOffsetSeconds(value, "ClassIsland Control 每日自动时间偏移");
+        var written = bridge.WriteTimeOffsetSeconds(value, "Classisland Super Control 每日自动时间偏移");
         if (!written && !announce) return;
         status.TimeOffsetApplied($"每日自动偏移 {Format(perDay)}/天（已计 {days} 天，当前 {Format(value)}）");
         if (written)
@@ -256,7 +256,7 @@ public sealed class TimeOffsetService(
         }
         DeactivateDaily();
         if (baseline is { } value)
-            bridge.WriteTimeOffsetSeconds(value, "ClassIsland Control 恢复本机时间偏移");
+            bridge.WriteTimeOffsetSeconds(value, "Classisland Super Control 恢复本机时间偏移");
         status.TimeOffsetApplied("跟随本机设置");
     }
 

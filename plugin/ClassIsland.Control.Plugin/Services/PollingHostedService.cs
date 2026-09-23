@@ -334,7 +334,7 @@ public sealed class PollingHostedService(
                 // 实时模式退避到 60 秒封顶：长连接失败时 ConnectionLost 会立即唤醒重连，无需按 HTTP 指数退避干等。
                 var backoffCap = store.Settings.Transport == "websocket" ? 60 : 600;
                 nextSeconds = Math.Min(backoffCap, (int)Math.Pow(2, Math.Min(failures, 8)));
-                logger.LogWarning(exception, "ClassIsland Control polling failed; retrying in {Delay}s", nextSeconds);
+                logger.LogWarning(exception, "Classisland Super Control polling failed; retrying in {Delay}s", nextSeconds);
             }
             var wake = _changeWake;
             _changeWake = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

@@ -156,7 +156,7 @@ public sealed class HostOperationService(
             // 集合变更会触发工作流的 Unload/Load，必须在 UI 线程原位替换，不能整体赋值。
             service.Workflows.Clear();
             foreach (var workflow in workflows) service.Workflows.Add(workflow);
-            service.SaveConfig("ClassIsland Control command");
+            service.SaveConfig("Classisland Super Control command");
         });
         return new(command.CommandId, "succeeded");
     }

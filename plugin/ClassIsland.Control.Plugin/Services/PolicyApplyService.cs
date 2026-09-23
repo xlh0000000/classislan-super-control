@@ -80,7 +80,7 @@ public sealed class PolicyApplyService(
                     if (workflows is null) throw new InvalidOperationException("Invalid automation policy.");
                     automationService.Workflows.Clear();
                     foreach (var workflow in workflows) automationService.Workflows.Add(workflow);
-                    automationService.SaveConfig("ClassIsland Control policy");
+                    automationService.SaveConfig("Classisland Super Control policy");
                     sections["automation"] = "applied";
                 }
                 if (settingsPolicy.Available)

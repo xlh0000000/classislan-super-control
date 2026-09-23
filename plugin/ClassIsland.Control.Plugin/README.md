@@ -1,8 +1,8 @@
 <div align="center">
 
-# ClassIsland Control Plugin
+# Classisland Super Control Plugin
 
-**ClassIsland Control 的设备端插件**
+**Classisland Super Control 的设备端插件**
 
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
 ![ClassIsland](https://img.shields.io/badge/ClassIsland-2.1.0.1-2563eb)

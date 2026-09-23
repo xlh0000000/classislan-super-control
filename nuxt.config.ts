@@ -31,7 +31,7 @@ export default defineNuxtConfig({
     dataDir: process.env.CLASSISLAND_CONTROL_DATA_DIR || "./data",
     appVersion,
     public: {
-      productName: "ClassIsland Control",
+      productName: "Classisland Super Control",
     },
   },
   typescript: {
