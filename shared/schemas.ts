@@ -297,7 +297,7 @@ export type PluginUpdateTargetInput = z.infer<typeof pluginUpdateTargetSchema>;
  * 所以这里的字段全部是只读性质的元数据，碰不到设备的目标版本。
  */
 export const PLUGIN_UPSTREAM_REPO_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
-export const PLUGIN_UPSTREAM_DEFAULT_REPO = "xlh0000000/classislan-super-control";
+export const PLUGIN_UPSTREAM_DEFAULT_REPO = "xlh0000000/classisland-super-control";
 /** 间隔下限 10 分钟：GitHub 未认证 API 每小时只有 60 次配额，巡检再密就是在替别人烧配额。 */
 export const PLUGIN_UPSTREAM_MIN_INTERVAL_MINUTES = 10;
 export const PLUGIN_UPSTREAM_MAX_INTERVAL_MINUTES = 1440;

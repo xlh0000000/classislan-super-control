@@ -32,8 +32,8 @@ vi.mock("../server/utils/database", async (importOriginal) => {
 });
 
 const NOW = "2026-09-22T00:00:00.000Z";
-const API_URL = "https://api.github.com/repos/xlh0000000/classislan-super-control/releases/latest";
-const ASSET_URL = "https://github.com/xlh0000000/classislan-super-control/releases/download/v0.1.7/ClassIsland.Control.Plugin.cipx";
+const API_URL = "https://api.github.com/repos/xlh0000000/classisland-super-control/releases/latest";
+const ASSET_URL = "https://github.com/xlh0000000/classisland-super-control/releases/download/v0.1.7/ClassIsland.Control.Plugin.cipx";
 const ADMIN = { id: "user-admin", role: "admin" };
 
 function releaseDoc(tagName: string, digest?: string) {
@@ -173,7 +173,7 @@ describe("上游版本：镜像地址", () => {
 
   it("候选地址按填写顺序依次回退，最后才是直连", () => {
     const candidates = pluginUpstreamCandidates({
-      enabled: true, repo: "xlh0000000/classislan-super-control", proxies: ["https://m1.example.com", "https://m2.example.com/"], intervalMinutes: 30,
+      enabled: true, repo: "xlh0000000/classisland-super-control", proxies: ["https://m1.example.com", "https://m2.example.com/"], intervalMinutes: 30,
     });
     expect(candidates.map((item) => item.url)).toEqual([
       `https://m1.example.com/${API_URL}`,
@@ -202,7 +202,7 @@ describe("上游版本：抓取", () => {
       return jsonResponse(releaseDoc("v0.1.7", "sha256:" + "a".repeat(64)));
     });
     const state = await fetchPluginUpstreamRelease(
-      { enabled: true, repo: "xlh0000000/classislan-super-control", proxies: ["https://m1.example.com/", "https://m2.example.com/"], intervalMinutes: 30 },
+      { enabled: true, repo: "xlh0000000/classisland-super-control", proxies: ["https://m1.example.com/", "https://m2.example.com/"], intervalMinutes: 30 },
       { fetchImpl, now: () => NOW },
     );
     expect(urls).toEqual(["https://m1.example.com/" + API_URL, "https://m2.example.com/" + API_URL]);
@@ -233,7 +233,7 @@ describe("上游版本：抓取", () => {
 });
 
 describe("上游版本：定时巡检与视图", () => {
-  const configInput = { enabled: true, repo: "xlh0000000/classislan-super-control", proxies: [] as string[], intervalMinutes: 30 };
+  const configInput = { enabled: true, repo: "xlh0000000/classisland-super-control", proxies: [] as string[], intervalMinutes: 30 };
   const later = (minutes: number) => new Date(Date.parse(NOW) + minutes * 60_000).toISOString();
 
   it("关掉检测就不再出门，且清掉上一次的结果", () => {
@@ -256,7 +256,7 @@ describe("上游版本：定时巡检与视图", () => {
     db.prepare("INSERT INTO system_state (key,value,updated_at) VALUES ('plugin.upstream.config',?,?)")
       .run('{"enabled":"yes","repo":"  ","proxies":["https://ok.example.com/","https://10.1.2.3/"],"intervalMinutes":1}', NOW);
     expect(readPluginUpstreamConfig(db)).toEqual({
-      enabled: false, repo: "xlh0000000/classislan-super-control", proxies: ["https://ok.example.com/"], intervalMinutes: 30,
+      enabled: false, repo: "xlh0000000/classisland-super-control", proxies: ["https://ok.example.com/"], intervalMinutes: 30,
     });
     db.close();
   });

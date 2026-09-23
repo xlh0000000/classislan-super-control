@@ -78,7 +78,7 @@ dotnet build plugin/ClassIsland.Control.Plugin/ClassIsland.Control.Plugin.csproj
 
 ## 🏷️ 发布
 
-打 `v*` 标签即自动发版（`.github/workflows/release.yml`）：构建插件包与服务端压缩包附到 Release，并把同版本镜像推到 `ghcr.io/xlh0000000/classislan-super-control`。
+打 `v*` 标签即自动发版（`.github/workflows/release.yml`）：构建插件包与服务端压缩包附到 Release，并把同版本镜像推到 `ghcr.io/xlh0000000/classisland-super-control`。
 
 ```bash
 git tag v0.1.0 && git push origin v0.1.0
